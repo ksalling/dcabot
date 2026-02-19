@@ -58,6 +58,8 @@ class TradeExecutor:
                     user=job.user,
                     exchange_name=job.account.exchange.name,
                     symbol=symbol,
+                    job_name=job.name,  # Snapshot
+                    order_type='market', # Currently always market
                     amount_spent=Decimal(order.get('cost') or allocation), # Use actual cost if available
                     amount_received=Decimal(order.get('amount', 0)), # Actual filled amount
                     purchase_price=Decimal(order.get('price', 0) or 0), # Average price

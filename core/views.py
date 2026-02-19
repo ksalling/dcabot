@@ -489,3 +489,13 @@ class JobRunwayView(LoginRequiredMixin, View):
             'currency': currency
         }
         return render(request, 'core/partials/job_runway.html', context)
+
+class TradeListView(LoginRequiredMixin, ListView):
+    model = Trade
+    template_name = 'core/trade_list.html'
+    context_object_name = 'trades'
+    paginate_by = 50
+    
+    def get_queryset(self):
+        return Trade.objects.filter(user=self.request.user).order_by('-timestamp')
+

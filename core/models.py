@@ -86,6 +86,8 @@ class Trade(models.Model):
     
     exchange_name = models.CharField(max_length=100)
     symbol = models.CharField(max_length=20) # e.g. BTC/USDT
+    job_name = models.CharField(max_length=100, default="Unknown Job", help_text="Snapshot of job name at time of trade")
+    order_type = models.CharField(max_length=20, default='market')
     
     amount_spent = models.DecimalField(max_digits=20, decimal_places=8)
     amount_received = models.DecimalField(max_digits=20, decimal_places=8)

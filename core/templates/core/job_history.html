@@ -47,11 +47,15 @@
             <table class="w-full text-sm text-left text-gray-400">
                 <thead class="text-xs text-gray-500 uppercase bg-gray-700">
                     <tr>
-                        <th class="px-6 py-3">Date</th>
-                        <th class="px-6 py-3">Symbol</th>
-                        <th class="px-6 py-3">Amount</th>
-                        <th class="px-6 py-3">Price</th>
-                        <th class="px-6 py-3">Fee</th>
+                        <th class="px-6 py-3">Date/Time</th>
+                        <th class="px-6 py-3">Job</th>
+                        <th class="px-6 py-3">Exchange</th>
+                        <th class="px-6 py-3">Pair</th>
+                        <th class="px-6 py-3">Type</th>
+                        <th class="px-6 py-3 text-right">Amount</th>
+                        <th class="px-6 py-3 text-right">Price</th>
+                        <th class="px-6 py-3 text-right">Cost</th>
+                        <th class="px-6 py-3 text-right">Fees</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -62,10 +66,14 @@
                                 {{ trade.timestamp|date:"Y-m-d H:i" }}
                             </span>
                         </td>
-                        <td class="px-6 py-4 font-medium text-white">{{ trade.symbol }}</td>
-                        <td class="px-6 py-4">{{ trade.amount_received }}</td>
-                        <td class="px-6 py-4">{{ trade.purchase_price }}</td>
-                        <td class="px-6 py-4">{{ trade.fee_incurred }}</td>
+                        <td class="px-6 py-4 font-medium text-white">{{ trade.job_name }}</td>
+                        <td class="px-6 py-4">{{ trade.exchange_name }}</td>
+                        <td class="px-6 py-4 font-medium text-blue-400">{{ trade.symbol }}</td>
+                        <td class="px-6 py-4 uppercase text-xs font-bold">{{ trade.order_type }}</td>
+                        <td class="px-6 py-4 text-right">{{ trade.amount_received|stringformat:".6f" }}</td>
+                        <td class="px-6 py-4 text-right">${{ trade.purchase_price|stringformat:".2f" }}</td>
+                        <td class="px-6 py-4 text-right">${{ trade.amount_spent|stringformat:".2f" }}</td>
+                        <td class="px-6 py-4 text-right text-red-400">{{ trade.fee_incurred|stringformat:".6f" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
