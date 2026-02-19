@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    {% if user.is_staff or user.is_superuser %}
+    <!-- Admin Card -->
+    <div
+        class="bg-gradient-to-r from-purple-800 to-indigo-900 border border-purple-500 rounded-lg p-6 shadow-lg flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-white mb-2">Admin Status Active</h2>
+            <p class="text-purple-200">You have administrative privileges on this platform.</p>
+        </div>
+        <div class="text-4xl text-purple-300">
+            🛡️
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Profile Form -->
+        <div class="md:col-span-2 bg-gray-800 rounded-lg p-6 shadow-lg">
+            <h2 class="text-xl font-bold text-white mb-6">Edit Profile</h2>
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                {% for field in form %}
+                <div>
+                    <div class="block text-sm font-medium text-gray-400 mb-1">
+                        {{ field.label_tag }}
+                    </div>
+                    <div class="text-gray-900">
+                        {{ field }}
+                    </div>
+                    {{ field.errors }}
+                </div>
+                {% endfor %}
+                <button type="submit"
+                    class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition">
+                    Save Changes
+                </button>
+            </form>
+        </div>
+
+        <!-- Actions -->
+        <div class="space-y-6">
+            <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+                <h3 class="text-lg font-bold text-white mb-4">Account Security</h3>
+                <a href="{% url 'password_change' %}"
+                    class="block w-full text-center bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded transition">
+                    Change Password
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    input[type="text"],
+    input[type="email"] {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        background-color: #374151;
+        border: 1px solid #4B5563;
+        color: white;
+    }
+</style>
+{% endblock %}

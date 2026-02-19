@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCA Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        /* Custom scrollbar or other global styles */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col">
+    <nav class="bg-gray-800 border-b border-gray-700 p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="{% url 'dashboard' %}" class="text-xl font-bold text-blue-400">DCA Bot</a>
+            <div>
+                {% if user.is_authenticated %}
+                {% if user.is_staff %}
+                <a href="{% url 'admin:index' %}" class="mr-4 text-purple-400 hover:text-purple-300 font-medium">Site
+                    Settings</a>
+                <a href="{% url 'manage_exchanges' %}"
+                    class="mr-4 text-purple-400 hover:text-purple-300 font-medium">Manage
+                    Exchanges</a>
+                {% endif %}
+                <a href="{% url 'profile' %}" class="mr-4 text-gray-400 hover:text-white">Hi, {{ user.username }}</a>
+                <form action="{% url 'logout' %}" method="post" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="text-sm text-red-400 hover:text-red-300">Logout</button>
+                </form>
+                {% else %}
+                <a href="{% url 'login' %}" class="text-blue-400">Login</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-4 flex-grow">
+        {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+            <div
+                class="p-3 rounded mb-2 {% if message.tags == 'error' %}bg-red-900 text-red-200{% else %}bg-green-900 text-green-200{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-gray-800 border-t border-gray-700 p-4 text-center text-gray-500 text-sm">
+        &copy; 2024 DCA Bot
+    </footer>
+    <script>
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
+        });
+    </script>
+</body>
+
+</html>

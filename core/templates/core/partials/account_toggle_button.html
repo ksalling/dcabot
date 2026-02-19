@@ -1,0 +1,19 @@
+<form hx-post="{% url 'account_toggle' account.id %}" hx-swap="outerHTML" class="inline">
+    {% csrf_token %}
+    <button type="submit" class="px-3 py-1 text-xs font-semibold rounded-full transition-colors duration-200
+        {% if not account.exchange.is_enabled %}
+            bg-gray-700 text-gray-500 cursor-not-allowed opacity-50
+        {% elif account.is_active %}
+            bg-green-900 text-green-200 hover:bg-green-800
+        {% else %}
+            bg-gray-600 text-gray-300 hover:bg-gray-500
+        {% endif %}" {% if not account.exchange.is_enabled %}disabled title="Exchange disabled by admin" {% endif %}>
+        {% if not account.exchange.is_enabled %}
+        Disabled (Admin)
+        {% elif account.is_active %}
+        Active
+        {% else %}
+        Inactive
+        {% endif %}
+    </button>
+</form>

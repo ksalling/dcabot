@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main Content -->
+    <div class="lg:col-span-2 space-y-6">
+
+        <!-- System Alerts -->
+        {% for account in accounts %}
+        {% if not account.exchange.is_enabled %}
+        <div class="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded relative" role="alert">
+            <strong class="font-bold">Attention!</strong>
+            <span class="block sm:inline">The exchange <strong>{{ account.exchange.name }}</strong> has been disabled by
+                the administrator. Your account and related jobs have been paused.</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        <!-- Active Jobs -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-white">Your DCA Jobs</h2>
+                <a href="{% url 'job_create' %}"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold">
+                    + New Job
+                </a>
+            </div>
+
+            {% if jobs %}
+            <div class="space-y-4">
+                {% for job in jobs %}
+                <div class="bg-gray-700 p-4 rounded-lg flex justify-between items-center" id="job-{{ job.pk }}">
+                    <div>
+                        <h3 class="font-bold text-lg">
+                            <a href="{% url 'job_edit' pk=job.pk %}" class="hover:text-blue-400 transition-colors">
+                                {{ job.name }}
+                            </a>
+                        </h3>
+                        <p class="text-gray-400 text-sm">
+                            {{ job.get_interval_display }} • {{ job.total_amount }} {{ job.quote_currency }}
+                        </p>
+                        <div class="text-xs text-gray-500 mt-1">
+                            {% for token in job.tokens.all %}
+                            <span class="mr-2">{{ token.percentage }}% {{ token.token_symbol }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs text-gray-400">Next: {{ job.next_run|default:"Pending" }}</span>
+                        {% include 'core/partials/job_toggle_button.html' with job=job %}
+                        <form action="{% url 'job_run' pk=job.pk %}" method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded">Run
+                                Now</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-gray-400">No active jobs. Create one to get started!</p>
+            {% endif %}
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+            <h2 class="text-2xl font-bold text-white mb-4">Recent Trades</h2>
+            {% if recent_trades %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-gray-400">
+                    <thead class="text-xs text-gray-500 uppercase bg-gray-700">
+                        <tr>
+                            <th class="px-4 py-2">Time</th>
+                            <th class="px-4 py-2">Symbol</th>
+                            <th class="px-4 py-2">Amount</th>
+                            <th class="px-4 py-2">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for trade in recent_trades %}
+                        <tr class="border-b border-gray-700">
+                            <td class="px-4 py-2">{{ trade.timestamp|date:"M d H:i" }}</td>
+                            <td class="px-4 py-2 font-medium text-white">{{ trade.symbol }}</td>
+                            <td class="px-4 py-2">{{ trade.amount_received }}</td>
+                            <td class="px-4 py-2">{{ trade.purchase_price }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-gray-400">No trades yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- Accounts -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-white">Exchange Accounts</h2>
+                <a href="{% url 'account_create' %}" class="text-blue-400 hover:text-blue-300 text-sm">+ Add</a>
+            </div>
+
+            {% if accounts %}
+            <ul class="space-y-3">
+                {% for account in accounts %}
+                <li class="bg-gray-700 p-3 rounded flex justify-between items-center">
+                    <a href="{% url 'account_edit' pk=account.pk %}" class="hover:text-blue-400 transition-colors">
+                        {{ account }}
+                    </a>
+                    {% include 'core/partials/account_toggle_button.html' with account=account %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-sm text-gray-400">No accounts connected.</p>
+            {% endif %}
+        </div>
+
+        <!-- Stats -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+            <h2 class="text-xl font-bold text-white mb-4">Overview</h2>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-400">Total Spent (Recent)</span>
+                <span class="text-2xl font-bold text-green-400">${{ total_spent|default:"0.00" }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

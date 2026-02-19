@@ -1,0 +1,145 @@
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const addTokenBtn = document.getElementById('add-token');
+        const tokenContainer = document.getElementById('token-formset');
+        const totalForms = document.getElementById('id_tokens-TOTAL_FORMS');
+        const counter = document.getElementById('allocation-counter');
+        const form = document.querySelector('form');
+        const errorMsg = document.getElementById('allocation-error');
+
+        function updatePercentage() {
+            let total = 0;
+            const percentageInputs = document.querySelectorAll('input[name$="-percentage"]');
+
+            percentageInputs.forEach(input => {
+                const formRow = input.closest('.token-form');
+                // Check if this row is hidden(deleted)
+                if (formRow && !formRow.classList.contains('hidden')) {
+                    total += parseFloat(input.value) || 0;
+                }
+            });
+
+            counter.textContent = total + "%";
+
+            if (total === 100) {
+                counter.classList.remove('text-red-400');
+                counter.classList.add('text-green-400');
+                errorMsg.classList.add('hidden');
+            } else {
+                counter.classList.remove('text-green-400');
+                counter.classList.add('text-red-400');
+            }
+            return total;
+        }
+
+        // Initial Calculation
+        updatePercentage();
+
+        // Event Delegation for percentage updates
+        tokenContainer.addEventListener('input', function (e) {
+            if (e.target.name && e.target.name.includes('percentage')) {
+                updatePercentage();
+            }
+        });
+
+        // Event Delegation for Delete Buttons
+        tokenContainer.addEventListener('click', function (e) {
+            const deleteBtn = e.target.closest('.delete-token-btn');
+            if (deleteBtn) {
+                const row = deleteBtn.closest('.token-form');
+                const deleteInput = row.querySelector('input[name$="-DELETE"]');
+
+                if (deleteInput) {
+                    // For existing forms, check the hidden DELETE checkbox and hide row
+                    deleteInput.checked = true;
+                    row.classList.add('hidden');
+                } else {
+                    // For new forms (no ID yet usually, but our template includes ID field), 
+                    // if it was dynamically added, we might just remove it.
+                    // However, Django formsets rely on management form indices. 
+                    // Safest for dynamic forms without ID is to remove, but we need to re-index.
+                    // Simpler approach for now: verify if it has an ID value.
+                    const idInput = row.querySelector('input[name$="-id"]');
+                    if (idInput && idInput.value) {
+                        // Has ID, strict delete
+                        // But wait, our template puts DELETE checkbox only if it exists? 
+                        // No, we added a hidden one manually in loop.
+                        // So we should be good to just check it.
+                        // Actually, we need to ensure the checkbox exists. 
+                        // If it's a fresh form added via JS, it might not have the DELETE field if we cloned a fresh one?
+                        // Let's check.
+                    }
+
+                    // If we just hide it and it doesn't have a DELETE field (newly added), it will still be submitted...
+                    // and might cause validation errors if empty. 
+                    // For new rows, we should remove them from DOM and update TOTAL_FORMS, or just clear values and hide?
+                    // Removing from DOM is best but requires reindexing. 
+                    // Let's try just hiding and clearing values for now, effectively making it "empty".
+                    // Django ignores empty forms if not required.
+                    row.remove();
+                    // Update indices? Yes we should.
+                    updateIndices();
+                }
+                updatePercentage();
+            }
+        });
+
+        function updateIndices() {
+            const forms = tokenContainer.querySelectorAll('.token-form');
+            totalForms.value = forms.length;
+            forms.forEach((form, index) => {
+                form.id = `form-${index}`;
+                // Update inputs
+                const inputs = form.querySelectorAll('input, select, textarea');
+                inputs.forEach(input => {
+                    if (input.name) {
+                        input.name = input.name.replace(/tokens-\d+-/, `tokens-${index}-`);
+                        input.id = input.id.replace(/tokens-\d+-/, `tokens-${index}-`);
+                    }
+                });
+            });
+        }
+
+        addTokenBtn.addEventListener('click', function () {
+            const forms = tokenContainer.getElementsByClassName('token-form');
+            const formCount = forms.length;
+
+            // Clone the first form (assuming at least one exists, or use empty_form pattern)
+            // If no forms exist (deleted all?), we might be in trouble. 
+            // Better to have a hidden empty template.
+            // For now, let's assume at least one.
+            let newForm;
+            if (forms.length > 0) {
+                newForm = forms[0].cloneNode(true);
+            } else {
+                return; // Should create an empty form template logic if needed
+            }
+
+            // Clean up new form
+            newForm.classList.remove('hidden');
+            const inputs = newForm.querySelectorAll('input');
+            inputs.forEach(input => {
+                if (input.type !== 'hidden' || input.name.includes('percentage') || input.name.includes('token_symbol')) {
+                    input.value = '';
+                }
+                // Uncheck DELETE if we cloned a deleted row
+                if (input.name.includes('DELETE')) {
+                    input.checked = false;
+                }
+            });
+
+            // Update indices before appending? No, append then reindex all to be safe
+            tokenContainer.appendChild(newForm);
+            updateIndices();
+        });
+
+        form.addEventListener('submit', function (e) {
+            const total = updatePercentage();
+            if (total !== 100) {
+                e.preventDefault();
+                errorMsg.classList.remove('hidden');
+                errorMsg.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+    });
+</script>

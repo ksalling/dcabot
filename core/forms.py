@@ -1,0 +1,107 @@
+from django import forms
+from django.contrib.auth.models import User
+from .models import ExchangeAccount, AutobuyJob, JobToken, SupportedExchange
+from .services.exchange_service import ExchangeService
+
+class UserProfileForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email']
+        labels = {
+            'first_name': 'First Name',
+            'last_name': 'Last Name',
+            'email': 'Email Address',
+        }
+
+class ExchangeAccountForm(forms.ModelForm):
+    class Meta:
+        model = ExchangeAccount
+        fields = ['exchange', 'nickname', 'api_key', 'api_secret', 'api_passphrase']
+        widgets = {
+            'api_key': forms.PasswordInput(render_value=True),
+            'api_secret': forms.PasswordInput(render_value=True),
+            'api_passphrase': forms.PasswordInput(render_value=True),
+        }
+        labels = {
+            'exchange': 'Exchange Platform',
+            'nickname': 'Account Nickname (Optional)',
+            'api_key': 'API Key',
+            'api_secret': 'API Secret',
+            'api_passphrase': 'API Passphrase (if required)',
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        exchange_data = cleaned_data.get('exchange')
+        api_key = cleaned_data.get('api_key')
+        api_secret = cleaned_data.get('api_secret')
+        api_passphrase = cleaned_data.get('api_passphrase')
+
+        if not exchange_data or not api_key or not api_secret:
+            return cleaned_data
+
+        # Temporary instance for validation
+        temp_account = ExchangeAccount(
+            exchange=exchange_data,
+            api_key=api_key,
+            api_secret=api_secret,
+            api_passphrase=api_passphrase
+        )
+        
+        # We need to manually encrypt because ExchangeService expects decrypted values
+        # BUT ExchangeService uses the model instance which has EncryptedCharField.
+        # EncryptedCharField automatically decrypts when accessed on a model instance IF it was loaded from DB.
+        # However, here we have a fresh instance. 
+        # ExchangeService._get_exchange_instance accesses self.account.api_key.
+        # On a fresh unsaved instance, self.account.api_key will be the raw string we passed in (e.g. "my-key").
+        # This works fine because ExchangeService just uses that string.
+        # EXCEPT `ExchangeService` assumes it might need to decrypt if it was encrypted?
+        # Let's check `ExchangeService`. It just reads `self.account.api_key`. 
+        # If I pass `api_key="abc"` to `ExchangeAccount(...)`, accessing `.api_key` returns "abc".
+        # So we can pass this temp account to ExchangeService.
+
+        service = ExchangeService(temp_account)
+        try:
+            # We need to verify if the exchange is supported first, which ExchangeService.__init__ does.
+            # Then validate connection.
+            if not service.validate_connection():
+                raise forms.ValidationError("Could not connect to exchange with provided credentials. Please check your API Key, Secret, and Passphrase.")
+        except Exception as e:
+            # If validate_connection fails or init fails
+            raise forms.ValidationError(f"Connection failed: {str(e)}")
+            
+        return cleaned_data
+
+class ExchangeAccountEditForm(forms.ModelForm):
+    class Meta:
+        model = ExchangeAccount
+        fields = ['nickname']
+        labels = {
+            'nickname': 'Account Nickname',
+        }
+
+class AutobuyJobForm(forms.ModelForm):
+    class Meta:
+        model = AutobuyJob
+        fields = ['name', 'account', 'total_amount', 'quote_currency', 'interval', 'start_time', 'end_date']
+        widgets = {
+            'start_time': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'total_amount': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
+            'quote_currency': forms.Select(choices=AutobuyJob.QUOTE_CURRENCIES),
+        }
+        labels = {
+            'name': 'Job Name',
+            'account': 'Exchange Account',
+            'total_amount': 'Total Investment Amount',
+            'quote_currency': 'Quote Currency (e.g. USDT)',
+            'interval': 'Run Frequency',
+            'start_time': 'Start Date & Time',
+            'end_date': 'End Date & Time (Optional)',
+        }
+
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['account'].queryset = ExchangeAccount.objects.filter(user=user)
+
+# JobToken formset will be needed for the dynamic token list

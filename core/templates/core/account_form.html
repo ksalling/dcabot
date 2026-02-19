@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-lg mx-auto bg-gray-800 p-6 rounded-lg shadow-lg mt-10">
+    <h2 class="text-2xl font-bold mb-6 text-white">Connect Exchange</h2>
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        {% for field in form %}
+        <div>
+            <div class="block text-sm font-medium text-gray-300 mb-1">
+                {{ field.label_tag }}
+            </div>
+            <div class="text-gray-900">
+                {{ field }}
+            </div>
+            {% if field.help_text %}
+            <p class="mt-1 text-xs text-gray-500">{{ field.help_text }}</p>
+            {% endif %}
+            {{ field.errors }}
+        </div>
+        {% endfor %}
+
+        <button type="submit"
+            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition duration-200">
+            Connect
+        </button>
+    </form>
+</div>
+
+<style>
+    input[type="text"],
+    input[type="password"],
+    select {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        background-color: #374151;
+        border: 1px solid #4B5563;
+        color: white;
+    }
+</style>
+{% endblock %}

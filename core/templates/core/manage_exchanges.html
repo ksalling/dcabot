@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-white">Manage Supported Exchanges</h2>
+        <input type="text" id="exchangeSearch" placeholder="Search exchanges..."
+            class="bg-gray-800 text-white px-4 py-2 rounded border border-gray-700 focus:outline-none focus:border-blue-500">
+    </div>
+
+    <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div class="overflow-y-auto max-h-[70vh]">
+            <table class="min-w-full divide-y divide-gray-700">
+                <thead class="bg-gray-700 sticky top-0">
+                    <tr>
+                        <th onclick="sortTable(0)"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white select-none group">
+                            Exchange Name <span class="sort-icon invisible group-hover:visible">↕</span>
+                        </th>
+                        <th onclick="sortTable(1)"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white select-none group">
+                            Slug <span class="sort-icon invisible group-hover:visible">↕</span>
+                        </th>
+                        <th onclick="sortTable(2)"
+                            class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer hover:text-white select-none group">
+                            Status <span class="sort-icon invisible group-hover:visible">↕</span>
+                        </th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-gray-800 divide-y divide-gray-700" id="exchangeTableBody">
+                    {% for exchange in exchanges %}
+                    <tr class="exchange-row hover:bg-gray-750">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-white font-medium exchange-name">
+                            {{ exchange.name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400 exchange-slug">{{ exchange.slug }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap exchange-status"
+                            data-status="{% if exchange.is_enabled %}1{% else %}0{% endif %}">
+                            {% if exchange.is_enabled %}
+                            <span
+                                class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-200">
+                                Enabled
+                            </span>
+                            {% else %}
+                            <span
+                                class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-600 text-gray-300">
+                                Disabled
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <form method="post" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="slug" value="{{ exchange.slug }}">
+                                {% if exchange.is_enabled %}
+                                <input type="hidden" name="action" value="disable">
+                                <button type="submit"
+                                    class="text-red-400 hover:text-red-300 bg-red-900/20 px-3 py-1 rounded transition">Disable</button>
+                                {% else %}
+                                <input type="hidden" name="action" value="enable">
+                                <button type="submit"
+                                    class="text-green-400 hover:text-green-300 bg-green-900/20 px-3 py-1 rounded transition">Enable</button>
+                                {% endif %}
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Search functionality
+    document.getElementById('exchangeSearch').addEventListener('keyup', function () {
+        const query = this.value.toLowerCase();
+        const rows = document.querySelectorAll('.exchange-row');
+
+        rows.forEach(row => {
+            const slug = row.querySelector('.exchange-slug').textContent.toLowerCase();
+            const name = row.querySelector('.exchange-name').textContent.toLowerCase();
+            if (slug.includes(query) || name.includes(query)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+
+    // Sorting functionality
+    let sortDirection = {};
+
+    function sortTable(columnIndex) {
+        const tableBody = document.getElementById("exchangeTableBody");
+        const rows = Array.from(tableBody.querySelectorAll(".exchange-row"));
+
+        // Toggle direction
+        const dir = sortDirection[columnIndex] === 'asc' ? 'desc' : 'asc';
+        sortDirection[columnIndex] = dir;
+
+        // Update header icons
+        document.querySelectorAll('th .sort-icon').forEach(icon => icon.textContent = '↕');
+        const clickedHeaderIcon = document.querySelectorAll('th')[columnIndex].querySelector('.sort-icon');
+        if (clickedHeaderIcon) clickedHeaderIcon.textContent = dir === 'asc' ? '↑' : '↓';
+        if (clickedHeaderIcon) clickedHeaderIcon.classList.remove('invisible');
+
+        rows.sort((a, b) => {
+            let x, y;
+
+            // Handle different sort types
+            if (columnIndex === 2) { // Status column (using data attribute)
+                x = a.querySelector('.exchange-status').dataset.status;
+                y = b.querySelector('.exchange-status').dataset.status;
+            } else {
+                x = a.children[columnIndex].innerText.toLowerCase();
+                y = b.children[columnIndex].innerText.toLowerCase();
+            }
+
+            if (x < y) return dir === 'asc' ? -1 : 1;
+            if (x > y) return dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Reorder rows
+        rows.forEach(row => tableBody.appendChild(row));
+    }
+</script>
+{% endblock %}
