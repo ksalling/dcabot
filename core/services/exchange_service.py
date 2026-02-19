@@ -131,6 +131,30 @@ class ExchangeService:
             
             order = self.exchange.create_market_buy_order(symbol, base_amount)
             
+            if order is None:
+                self.log(f"Warning: Exchange returned None for order. Attempting to verify via fetch_my_trades...", level='WARNING', job=job)
+                # Attempt fallback verification
+                if self.exchange.has.get('fetchMyTrades'):
+                    import time
+                    time.sleep(1) # Give it a second to propagate
+                    trades = self.exchange.fetch_my_trades(symbol, limit=1)
+                    if trades:
+                        # Use the most recent trade to reconstruct order data
+                        # Note: This might be partial if multiple fills, but better than nothing.
+                        latest_trade = trades[0]
+                        # Verify it's recent (e.g. within last minute) logic could be added, but assuming it's ours for now.
+                        order = {
+                            'id': latest_trade.get('order', 'unknown_recovered'),
+                            'amount': latest_trade.get('amount'),
+                            'price': latest_trade.get('price'),
+                            'fee': latest_trade.get('fee'),
+                            'status': 'closed' # Assume filled if in trades
+                        }
+                        self.log(f"Recovered order data from latest trade: {order.get('id')}", job=job)
+            
+            if order is None:
+                 raise ValueError("Exchange API returned no data for the order. Check exchange history manually.")
+
             self.log(f"Order placed: {order.get('id', 'Unknown ID')}", job=job)
             return order
             

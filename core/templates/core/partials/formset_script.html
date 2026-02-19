@@ -35,10 +35,13 @@
         // Initial Calculation
         updatePercentage();
 
-        // Event Delegation for percentage updates
+        // Event Delegation for percentage updates and uppercase symbol
         tokenContainer.addEventListener('input', function (e) {
             if (e.target.name && e.target.name.includes('percentage')) {
                 updatePercentage();
+            }
+            if (e.target.name && e.target.name.includes('token_symbol')) {
+                e.target.value = e.target.value.toUpperCase();
             }
         });
 

@@ -12,6 +12,11 @@
                 <div class="text-gray-900">
                     {{ field }}
                 </div>
+                {% if field.name == 'start_time' %}
+                {% load tz %}
+                {% get_current_timezone as TIME_ZONE %}
+                <p class="mt-1 text-xs text-blue-400">Timezone: {{ TIME_ZONE }}</p>
+                {% endif %}
                 {% if field.help_text %}
                 <p class="mt-1 text-xs text-gray-500">{{ field.help_text }}</p>
                 {% endif %}
@@ -38,7 +43,7 @@
                     <div class="hidden">{{ token_form.DELETE }}</div> <!-- Hidden delete checkbox for Django -->
 
                     <div class="flex-1">
-                        <label class="block text-xs font-medium text-gray-400 mb-1">Symbol (e.g. BTC)</label>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Symbol (e.g. BTC/USD)</label>
                         {{ token_form.token_symbol }}
                     </div>
                     <div class="flex-1">

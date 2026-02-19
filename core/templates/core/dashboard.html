@@ -1,132 +1,229 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Main Content -->
-    <div class="lg:col-span-2 space-y-6">
+<div class="space-y-8">
 
-        <!-- System Alerts -->
-        {% for account in accounts %}
-        {% if not account.exchange.is_enabled %}
-        <div class="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded relative" role="alert">
-            <strong class="font-bold">Attention!</strong>
-            <span class="block sm:inline">The exchange <strong>{{ account.exchange.name }}</strong> has been disabled by
-                the administrator. Your account and related jobs have been paused.</span>
-        </div>
-        {% endif %}
-        {% endfor %}
+    <!-- Header / Portfolio Overview -->
+    <div>
+        <h2 class="text-3xl font-bold text-white mb-6">Dashboard</h2>
 
-        <!-- Active Jobs -->
-        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-white">Your DCA Jobs</h2>
-                <a href="{% url 'job_create' %}"
-                    class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold">
-                    + New Job
-                </a>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Total Value -->
+            <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-blue-500">
+                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">Portfolio Value</h3>
+                <p class="text-3xl font-bold text-white mt-1">${{ portfolio.total_current_value|stringformat:".2f" }}
+                </p>
+                <p class="text-xs text-gray-500 mt-2">Estimated based on current prices</p>
             </div>
 
-            {% if jobs %}
-            <div class="space-y-4">
-                {% for job in jobs %}
-                <div class="bg-gray-700 p-4 rounded-lg flex justify-between items-center" id="job-{{ job.pk }}">
-                    <div>
-                        <h3 class="font-bold text-lg">
-                            <a href="{% url 'job_edit' pk=job.pk %}" class="hover:text-blue-400 transition-colors">
-                                {{ job.name }}
-                            </a>
-                        </h3>
-                        <p class="text-gray-400 text-sm">
-                            {{ job.get_interval_display }} • {{ job.total_amount }} {{ job.quote_currency }}
-                        </p>
-                        <div class="text-xs text-gray-500 mt-1">
-                            {% for token in job.tokens.all %}
-                            <span class="mr-2">{{ token.percentage }}% {{ token.token_symbol }}</span>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <span class="text-xs text-gray-400">Next: {{ job.next_run|default:"Pending" }}</span>
-                        {% include 'core/partials/job_toggle_button.html' with job=job %}
-                        <form action="{% url 'job_run' pk=job.pk %}" method="post" class="inline">
-                            {% csrf_token %}
-                            <button type="submit" class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded">Run
-                                Now</button>
-                        </form>
-                    </div>
-                </div>
-                {% endfor %}
+            <!-- Cost Basis -->
+            <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-gray-500">
+                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">Total Invested</h3>
+                <p class="text-3xl font-bold text-white mt-1">${{ portfolio.total_cost_basis|stringformat:".2f" }}</p>
+                <p class="text-xs text-gray-500 mt-2">Total cost basis across all trades</p>
             </div>
-            {% else %}
-            <p class="text-gray-400">No active jobs. Create one to get started!</p>
-            {% endif %}
-        </div>
 
-        <!-- Recent Trades -->
-        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-            <h2 class="text-2xl font-bold text-white mb-4">Recent Trades</h2>
-            {% if recent_trades %}
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-gray-400">
-                    <thead class="text-xs text-gray-500 uppercase bg-gray-700">
-                        <tr>
-                            <th class="px-4 py-2">Time</th>
-                            <th class="px-4 py-2">Symbol</th>
-                            <th class="px-4 py-2">Amount</th>
-                            <th class="px-4 py-2">Price</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for trade in recent_trades %}
-                        <tr class="border-b border-gray-700">
-                            <td class="px-4 py-2">{{ trade.timestamp|date:"M d H:i" }}</td>
-                            <td class="px-4 py-2 font-medium text-white">{{ trade.symbol }}</td>
-                            <td class="px-4 py-2">{{ trade.amount_received }}</td>
-                            <td class="px-4 py-2">{{ trade.purchase_price }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <!-- PnL $ -->
+            <div
+                class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 {% if portfolio.total_pnl >= 0 %}border-green-500{% else %}border-red-500{% endif %}">
+                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">Total Profit/Loss</h3>
+                <p
+                    class="text-3xl font-bold mt-1 {% if portfolio.total_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                    {{ portfolio.total_pnl|stringformat:".2f" }}
+                </p>
+                <p class="text-xs text-gray-500 mt-2">Unrealized PnL</p>
             </div>
-            {% else %}
-            <p class="text-gray-400">No trades yet.</p>
-            {% endif %}
+
+            <!-- PnL % -->
+            <div
+                class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 {% if portfolio.total_pnl_percent >= 0 %}border-green-500{% else %}border-red-500{% endif %}">
+                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">ROI</h3>
+                <p
+                    class="text-3xl font-bold mt-1 {% if portfolio.total_pnl_percent >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                    {{ portfolio.total_pnl_percent|stringformat:".2f" }}%
+                </p>
+                <p class="text-xs text-gray-500 mt-2">Return on Investment</p>
+            </div>
         </div>
     </div>
 
-    <!-- Sidebar -->
-    <div class="space-y-6">
-        <!-- Accounts -->
-        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-white">Exchange Accounts</h2>
-                <a href="{% url 'account_create' %}" class="text-blue-400 hover:text-blue-300 text-sm">+ Add</a>
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+
+        <!-- Left Column (Jobs & Accounts) -->
+        <div class="xl:col-span-2 space-y-8">
+
+            <!-- Active Jobs Section -->
+            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-white">Active Jobs</h3>
+                    <a href="{% url 'job_create' %}"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide transition-colors">+
+                        New Job</a>
+                </div>
+                <div class="p-6">
+                    {% if jobs %}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {% for job in jobs %}
+                        {% include 'core/partials/job_card.html' with job=job %}
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-8 text-gray-500">
+                        No active jobs. <a href="{% url 'job_create' %}" class="text-blue-400 hover:underline">Start one
+                            now</a>.
+                    </div>
+                    {% endif %}
+                </div>
             </div>
 
-            {% if accounts %}
-            <ul class="space-y-3">
-                {% for account in accounts %}
-                <li class="bg-gray-700 p-3 rounded flex justify-between items-center">
-                    <a href="{% url 'account_edit' pk=account.pk %}" class="hover:text-blue-400 transition-colors">
-                        {{ account }}
-                    </a>
-                    {% include 'core/partials/account_toggle_button.html' with account=account %}
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p class="text-sm text-gray-400">No accounts connected.</p>
-            {% endif %}
+            <!-- Holdings / PnL Table -->
+            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold text-white">Portfolio Holdings</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-400">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
+                            <tr>
+                                <th class="px-6 py-3">Asset</th>
+                                <th class="px-6 py-3 text-right">Holdings</th>
+                                <th class="px-6 py-3 text-right">Avg Price</th>
+                                <th class="px-6 py-3 text-right">Current Price</th>
+                                <th class="px-6 py-3 text-right">Total Fees</th>
+                                <th class="px-6 py-3 text-right">Value (Net)</th>
+                                <th class="px-6 py-3 text-right">PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for asset in portfolio.holdings %}
+                            <tr class="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
+                                <td class="px-6 py-4 font-bold text-white">{{ asset.symbol }}</td>
+                                <td class="px-6 py-4 text-right">{{ asset.quantity|stringformat:".8f" }}</td>
+                                <td class="px-6 py-4 text-right">${{ asset.avg_price|stringformat:".2f" }}</td>
+                                <td class="px-6 py-4 text-right text-gray-300">$
+                                    {{ asset.current_price|stringformat:".2f" }}
+                                </td>
+                                <td class="px-6 py-4 text-right text-red-400">${{ asset.fees|stringformat:".4f" }}</td>
+                                <td class="px-6 py-4 text-right font-medium text-white">$
+                                    {{ asset.current_value|stringformat:".2f" }}</td>
+                                <td
+                                    class="px-6 py-4 text-right font-medium {% if asset.pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                                    {{ asset.pnl|stringformat:".2f" }} <span class="text-xs opacity-75">(
+                                        {{ asset.pnl_percent|stringformat:".2f" }}%)</span>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">No holdings yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
 
-        <!-- Stats -->
-        <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
-            <h2 class="text-xl font-bold text-white mb-4">Overview</h2>
-            <div class="flex justify-between items-center">
-                <span class="text-gray-400">Total Spent (Recent)</span>
-                <span class="text-2xl font-bold text-green-400">${{ total_spent|default:"0.00" }}</span>
+        <!-- Right Column (Accounts & Trades) -->
+        <div class="space-y-8">
+
+            <!-- Exchange Accounts -->
+            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-white">Exchange Accounts</h3>
+                    <a href="{% url 'account_create' %}"
+                        class="text-blue-400 hover:text-blue-300 text-xs uppercase font-bold text-sm">+ Add</a>
+                </div>
+                <div class="p-0">
+                    {% if accounts %}
+                    <ul class="divide-y divide-gray-700">
+                        {% for account in accounts %}
+                        <li class="p-4 flex justify-between items-center hover:bg-gray-700/50 transition-colors">
+                            <div class="flex items-center space-x-3">
+                                <div
+                                    class="w-2 h-2 rounded-full {% if account.is_active and account.exchange.is_enabled %}bg-green-500{% else %}bg-red-500{% endif %}">
+                                </div>
+                                <div>
+                                    <a href="{% url 'account_edit' pk=account.pk %}"
+                                        class="font-medium text-white hover:text-blue-400 block">{{ account }}</a>
+                                    <span class="text-xs text-gray-500">{{ account.exchange.name }}</span>
+                                </div>
+                            </div>
+                            {% include 'core/partials/account_toggle_button.html' with account=account %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="p-6 text-center text-gray-500">
+                        No accounts. <a href="{% url 'account_create' %}" class="text-blue-400 hover:underline">Connect
+                            one</a>.
+                    </div>
+                    {% endif %}
+                </div>
             </div>
+
+            <!-- Recent Trades -->
+            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-700">
+                    <h3 class="text-lg font-bold text-white">Recent Trades</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-400">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
+                            <tr>
+                                <th class="px-4 py-3">Time</th>
+                                <th class="px-4 py-3">Pair</th>
+                                <th class="px-4 py-3 text-right">Amt</th>
+                                <th class="px-4 py-3 text-right">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for trade in recent_trades %}
+                            <tr class="border-b border-gray-700 hover:bg-gray-700/50">
+                                <td class="px-4 py-3">
+                                    <span class="local-datetime text-xs whitespace-nowrap"
+                                        data-utc="{{ trade.timestamp|date:'c' }}">
+                                        {{ trade.timestamp|date:"M d H:i" }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 font-medium text-white">{{ trade.symbol }}</td>
+                                <td class="px-4 py-3 text-right">{{ trade.amount_received|stringformat:".4f" }}</td>
+                                <td class="px-4 py-3 text-right">${{ trade.purchase_price|stringformat:".2f" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="px-6 py-8 text-center text-gray-500">No trades yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
+
+<script>
+    function updateLocalTimes() {
+        const dateElements = document.querySelectorAll('.local-datetime');
+        dateElements.forEach(el => {
+            const utcTime = el.getAttribute('data-utc');
+            if (utcTime && !el.dataset.processed) {
+                const date = new Date(utcTime);
+                el.textContent = date.toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                });
+                el.dataset.processed = "true";
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', updateLocalTimes);
+    document.body.addEventListener('htmx:afterSwap', updateLocalTimes);
+</script>
 {% endblock %}

@@ -35,18 +35,22 @@ class CustomPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
 
 class DashboardView(LoginRequiredMixin, View):
     def get(self, request):
+        from .services.portfolio import PortfolioService
+        
+        # Data Fetching
         jobs = AutobuyJob.objects.filter(user=request.user).order_by('-created_at')
         accounts = ExchangeAccount.objects.filter(user=request.user)
-        recent_trades = Trade.objects.filter(user=request.user).order_by('-timestamp')[:5]
+        recent_trades = Trade.objects.filter(user=request.user).order_by('-timestamp')[:10] # Show 10
         
-        # Simple stats
-        total_spent = sum(t.amount_spent for t in recent_trades)
+        # Portfolio Calculation
+        portfolio_service = PortfolioService(request.user)
+        portfolio_data = portfolio_service.get_portfolio_summary()
         
         context = {
             'jobs': jobs,
             'accounts': accounts,
             'recent_trades': recent_trades,
-            'total_spent': total_spent
+            'portfolio': portfolio_data
         }
         return render(request, 'core/dashboard.html', context)
 
@@ -74,8 +78,60 @@ class JobCreateView(LoginRequiredMixin, CreateView):
         context = self.get_context_data()
         tokens = context['tokens']
         if form.is_valid() and tokens.is_valid():
+            # 1. Validate Total Percentage = 100%
+            total_percentage = 0
+            for token_form in tokens:
+                if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
+                    total_percentage += token_form.cleaned_data.get('percentage', 0)
+            
+            if total_percentage != 100:
+                messages.error(self.request, f"Total percentage must be 100%. Current total: {total_percentage}%")
+                return self.render_to_response(self.get_context_data(form=form))
+
+            # 2. Exchange Validation
             self.object = form.save(commit=False)
             self.object.user = self.request.user
+            self.object.is_active = True # Active by default on create
+            # We need to save object first? OR use instance?
+            # ModelForm save(commit=False) gives us an instance.
+            
+            from .services.exchange_service import ExchangeService
+            service = ExchangeService(self.object.account)
+            
+            # Check Funds (Soft Validation)
+            has_funds, msg = service.validate_job_funds(self.object.total_amount, self.object.quote_currency)
+            if not has_funds:
+                self.object.last_status = 'warning'
+                self.object.last_error_message = msg
+                messages.warning(self.request, f"Warning: {msg} The job has been created but may fail if funds are not added.")
+            else:
+                self.object.last_status = 'success' # Or clear it?
+                self.object.last_error_message = ''
+            
+            # Check Pairs (Hard Validation)
+            for token_form in tokens:
+                 if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
+                     symbol = token_form.cleaned_data.get('token_symbol')
+                     if '/' in symbol:
+                         base, quote = symbol.split('/')
+                         if quote != self.object.quote_currency:
+                              messages.error(self.request, f"Token {symbol} quote currency ({quote}) does not match job quote currency ({self.object.quote_currency}).")
+                              return self.render_to_response(self.get_context_data(form=form))
+                     else:
+                         base = symbol
+                     
+                     is_valid, pair_msg = service.validate_pair(base, self.object.quote_currency)
+                     if not is_valid:
+                         messages.error(self.request, pair_msg)
+                         return self.render_to_response(self.get_context_data(form=form))
+
+            self.object = form.save(commit=False)
+            self.object.is_active = True
+            
+            # Initialize next_run to start_time so scheduler picks it up
+            if not self.object.next_run:
+                self.object.next_run = self.object.start_time
+                
             self.object.save()
             tokens.instance = self.object
             tokens.save()
@@ -124,10 +180,46 @@ class AccountDeleteView(LoginRequiredMixin, DeleteView):
 class JobToggleView(LoginRequiredMixin, View):
     def post(self, request, pk):
         job = get_object_or_404(AutobuyJob, pk=pk, user=request.user)
-        job.is_active = not job.is_active
-        job.save()
+        
+        # If we are activating the job (currently inactive)
+        if not job.is_active:
+            # 1. Clear previous alerts
+            job.last_status = None
+            job.last_error_message = ""
+            
+            # 2. Re-validate funds
+            from .services.exchange_service import ExchangeService
+            service = ExchangeService(job.account)
+            has_funds, msg = service.validate_job_funds(job.total_amount, job.quote_currency)
+            
+            if not has_funds:
+                job.last_status = 'warning'
+                job.last_error_message = msg
+                # Do NOT activate. Keep is_active = False.
+                # Force save to store the warning
+                job.save(update_fields=['last_status', 'last_error_message'])
+            else:
+                job.last_status = 'success'
+                # Only activate if funds are okay
+                job.is_active = True
+                
+                # If next_run is missing (e.g. from legacy or error), set it to now to resume immediately
+                # or start_time if it's in the future? 
+                # Simplest is: if no next_run, set to now.
+                if not job.next_run:
+                    from django.utils import timezone
+                    job.next_run = timezone.now()
+                    
+                job.save()
+        else:
+             # Deactivating
+             job.is_active = False
+             job.save()
+
         if request.headers.get('HX-Request'):
-             return render(request, 'core/partials/job_toggle_button.html', {'job': job})
+             # Return the *updated* job card partial to swap outerHTML
+             return render(request, 'core/partials/job_card.html', {'job': job})
+             
         return redirect('dashboard')
 
 class AccountToggleView(LoginRequiredMixin, View):
@@ -270,21 +362,20 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
             from .services.exchange_service import ExchangeService
             service = ExchangeService(job.account)
             
-            # Check Funds
+            # Check Funds (Soft Validation)
             has_funds, msg = service.validate_job_funds(job.total_amount, job.quote_currency)
             if not has_funds:
-                messages.error(self.request, msg)
-                return self.render_to_response(self.get_context_data(form=form))
+                job.last_status = 'warning'
+                job.last_error_message = msg
+                messages.warning(self.request, f"Warning: {msg} The job has been created but may fail if funds are not added.")
+            else:
+                job.last_status = 'success'
+                job.last_error_message = ''
             
-            # Check Pairs
+            # Check Pairs (Hard Validation)
             for token_form in tokens:
                  if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
                      symbol = token_form.cleaned_data.get('token_symbol')
-                     # Assume symbol input is just "BTC" or "ETH", or maybe "BTC/USDT"?
-                     # Prompt said: "validate that the quote currency and the pair base currency match"
-                     # If user enters "BTC", we check "BTC/USDT".
-                     # If user enters "BTC/USDT", we check if split works.
-                     # Let's clean the input. If it has '/', split it.
                      if '/' in symbol:
                          base, quote = symbol.split('/')
                          if quote != job.quote_currency:
@@ -298,9 +389,21 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
                          messages.error(self.request, pair_msg)
                          return self.render_to_response(self.get_context_data(form=form))
 
-            self.object = form.save()
+            self.object = form.save(commit=False)
+            
+            # If start_time was changed, reset the schedule
+            if 'start_time' in form.changed_data:
+                 self.object.next_run = self.object.start_time
+            # Ensure next_run is set if missing (legacy)
+            elif not self.object.next_run:
+                 self.object.next_run = self.object.start_time
+            self.object.is_active = True
+            self.object.save()
             tokens.instance = self.object
             tokens.save()
+            
+            # Only show success message if no higher priority message (like error) - but we return early on error.
+            # Warning persists.
             messages.success(self.request, "Job updated successfully!")
             return redirect(self.success_url)
         else:
@@ -316,3 +419,28 @@ class JobDeleteView(LoginRequiredMixin, DeleteView):
     def form_valid(self, form):
         messages.success(self.request, "Job deleted successfully.")
         return super().form_valid(form)
+
+class JobClearAlertView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        job = get_object_or_404(AutobuyJob, pk=pk, user=request.user)
+        job.last_status = None
+        job.last_error_message = ""
+        job.save(update_fields=['last_status', 'last_error_message'])
+        if request.headers.get('HX-Request'):
+             # Return the clean job card to reset borders/alerts
+             return render(request, 'core/partials/job_card.html', {'job': job})
+        return redirect('dashboard')
+
+class JobHistoryView(LoginRequiredMixin, DetailView):
+    model = AutobuyJob
+    template_name = 'core/job_history.html'
+    context_object_name = 'job'
+
+    def get_queryset(self):
+        return AutobuyJob.objects.filter(user=self.request.user)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['logs'] = self.object.logs.all().order_by('-timestamp')[:50] # Last 50 logs
+        context['trades'] = self.object.trades.all().order_by('-timestamp')[:50] # Last 50 trades
+        return context

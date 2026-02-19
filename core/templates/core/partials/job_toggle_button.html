@@ -1,4 +1,4 @@
 <button hx-post="{% url 'job_toggle' pk=job.pk %}" hx-swap="outerHTML"
-    class="px-3 py-1 rounded text-xs font-bold {% if job.is_active %}bg-green-600 text-green-100 hover:bg-green-500{% else %}bg-gray-600 text-gray-300 hover:bg-gray-500{% endif %}">
-    {% if job.is_active %}Active{% else %}Paused{% endif %}
+    class="px-3 py-2 rounded text-xs font-bold uppercase tracking-wide transition-colors {% if job.is_active %}bg-green-600 hover:bg-green-500 text-white{% else %}bg-red-600 hover:bg-red-500 text-white{% endif %}">
+    {% if job.is_active %}Pause{% else %}Resume{% endif %}
 </button>

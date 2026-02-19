@@ -56,8 +56,17 @@ class AutobuyJob(models.Model):
     start_time = models.DateTimeField()
     end_date = models.DateTimeField(null=True, blank=True, help_text=_("Optional end date to stop the job"))
     last_run = models.DateTimeField(null=True, blank=True)
+    last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
     
+    STATUS_CHOICES = [
+        ('success', 'Success'),
+        ('warning', 'Warning'),
+        ('failure', 'Failure'),
+    ]
+    last_status = models.CharField(max_length=20, choices=STATUS_CHOICES, blank=True, null=True)
+    last_error_message = models.TextField(blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
