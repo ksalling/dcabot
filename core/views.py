@@ -497,5 +497,35 @@ class TradeListView(LoginRequiredMixin, ListView):
     paginate_by = 50
     
     def get_queryset(self):
-        return Trade.objects.filter(user=self.request.user).order_by('-timestamp')
+        queryset = Trade.objects.filter(user=self.request.user)
+        
+        # Search
+        search_query = self.request.GET.get('search', '')
+        if search_query:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(job_name__icontains=search_query) |
+                Q(exchange_name__icontains=search_query) |
+                Q(symbol__icontains=search_query) |
+                Q(order_type__icontains=search_query)
+            )
+            
+        # Sorting
+        sort_by = self.request.GET.get('sort', '-timestamp')
+        valid_sort_fields = ['timestamp', 'job_name', 'exchange_name', 'symbol', 'order_type', 'amount_received', 'purchase_price', 'amount_spent', 'fee_incurred']
+        
+        # Check if sort field is valid (allowing for '-' prefix)
+        raw_sort_field = sort_by.lstrip('-')
+        if raw_sort_field in valid_sort_fields:
+            queryset = queryset.order_by(sort_by)
+        else:
+            queryset = queryset.order_by('-timestamp')
+            
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['current_sort'] = self.request.GET.get('sort', '-timestamp')
+        context['search_query'] = self.request.GET.get('search', '')
+        return context
 

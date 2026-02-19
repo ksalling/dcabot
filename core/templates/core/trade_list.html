@@ -7,20 +7,118 @@
         <a href="{% url 'dashboard' %}" class="text-gray-400 hover:text-white">← Back to Dashboard</a>
     </div>
 
+    <div class="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow-lg">
+        <form method="get" class="flex items-center space-x-2 w-full max-w-md">
+            <input type="text" name="search" value="{{ search_query }}" placeholder="Search trades..."
+                class="bg-gray-700 text-white border border-gray-600 rounded px-4 py-2 w-full focus:outline-none focus:border-blue-500">
+            {% if current_sort %}
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+            {% endif %}
+            <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold transition-colors">
+                Search
+            </button>
+            {% if search_query %}
+            <a href="{% url 'trade_list' %}" class="text-gray-400 hover:text-white text-sm">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
     <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left text-gray-400">
                 <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
                     <tr>
-                        <th class="px-6 py-3">Date/Time</th>
-                        <th class="px-6 py-3">Job Name</th>
-                        <th class="px-6 py-3">Exchange</th>
-                        <th class="px-6 py-3">Pair</th>
-                        <th class="px-6 py-3">Type</th>
-                        <th class="px-6 py-3 text-right">Amount</th>
-                        <th class="px-6 py-3 text-right">Price</th>
-                        <th class="px-6 py-3 text-right">Cost</th>
-                        <th class="px-6 py-3 text-right">Fees</th>
+                        <th class="px-6 py-3">
+                            <a href="?sort={% if current_sort == 'timestamp' %}-timestamp{% else %}timestamp{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center group">
+                                Date/Time
+                                {% if 'timestamp' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3">
+                            <a href="?sort={% if current_sort == 'job_name' %}-job_name{% else %}job_name{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center group">
+                                Job Name
+                                {% if 'job_name' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3">
+                            <a href="?sort={% if current_sort == 'exchange_name' %}-exchange_name{% else %}exchange_name{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center group">
+                                Exchange
+                                {% if 'exchange_name' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3">
+                            <a href="?sort={% if current_sort == 'symbol' %}-symbol{% else %}symbol{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center group">
+                                Pair
+                                {% if 'symbol' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3">
+                            <a href="?sort={% if current_sort == 'order_type' %}-order_type{% else %}order_type{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center group">
+                                Type
+                                {% if 'order_type' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3 text-right">
+                            <a href="?sort={% if current_sort == 'amount_received' %}-amount_received{% else %}amount_received{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center justify-end group">
+                                Amount
+                                {% if 'amount_received' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3 text-right">
+                            <a href="?sort={% if current_sort == 'purchase_price' %}-purchase_price{% else %}purchase_price{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center justify-end group">
+                                Price
+                                {% if 'purchase_price' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3 text-right">
+                            <a href="?sort={% if current_sort == 'amount_spent' %}-amount_spent{% else %}amount_spent{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center justify-end group">
+                                Cost
+                                {% if 'amount_spent' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
+                        <th class="px-6 py-3 text-right">
+                            <a href="?sort={% if current_sort == 'fee_incurred' %}-fee_incurred{% else %}fee_incurred{% endif %}&search={{ search_query }}"
+                                class="hover:text-white flex items-center justify-end group">
+                                Fees
+                                {% if 'fee_incurred' in current_sort %}
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
+                                    {% endif %}</span>
+                                {% endif %}
+                            </a>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
