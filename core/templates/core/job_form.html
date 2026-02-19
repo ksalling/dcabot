@@ -138,4 +138,56 @@
         box-shadow: 0 0 0 2px #3B82F6;
     }
 </style>
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const totalAmountInput = document.getElementById('id_total_amount');
+        const tokenFormset = document.getElementById('token-formset');
+
+        function updateAllocationAmounts() {
+            const totalAmount = parseFloat(totalAmountInput.value) || 0;
+            const percentageInputs = tokenFormset.querySelectorAll('input[name$="-percentage"]');
+
+            percentageInputs.forEach(input => {
+                const percentage = parseFloat(input.value) || 0;
+                const amount = (percentage / 100) * totalAmount;
+
+                // Find or create the display element
+                let displaySpan = input.parentNode.querySelector('.allocation-amount');
+                if (!displaySpan) {
+                    displaySpan = document.createElement('div');
+                    displaySpan.className = 'allocation-amount text-xs text-green-400 mt-1 font-mono';
+                    input.parentNode.appendChild(displaySpan);
+                }
+
+                displaySpan.textContent = `≈ ${amount.toFixed(2)} USDT`; // Assuming USDT/Quote
+            });
+        }
+
+        // Listen for changes on Total Amount
+        if (totalAmountInput) {
+            totalAmountInput.addEventListener('input', updateAllocationAmounts);
+        }
+
+        // Listen for changes on Percentage inputs (using delegation for dynamic forms)
+        tokenFormset.addEventListener('input', function (e) {
+            if (e.target.name && e.target.name.includes('percentage')) {
+                updateAllocationAmounts();
+            }
+        });
+
+        // Initial update
+        updateAllocationAmounts();
+
+        // Hook into the "Add Another Coin" button to update new forms
+        const addTokenBtn = document.getElementById('add-token');
+        if (addTokenBtn) {
+            addTokenBtn.addEventListener('click', function () {
+                // Wait a tick for the new form to be added to DOM
+                setTimeout(updateAllocationAmounts, 100);
+            });
+        }
+    });
+</script>
 {% endblock %}
