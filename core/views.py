@@ -444,3 +444,48 @@ class JobHistoryView(LoginRequiredMixin, DetailView):
         context['logs'] = self.object.logs.all().order_by('-timestamp')[:50] # Last 50 logs
         context['trades'] = self.object.trades.all().order_by('-timestamp')[:50] # Last 50 trades
         return context
+
+class JobRunwayView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        job = get_object_or_404(AutobuyJob, pk=pk, user=request.user)
+        
+        # Calculate Runway
+        balance = 0
+        runs_remaining = 0
+        currency = job.quote_currency
+        
+        from .services.exchange_service import ExchangeService
+        try:
+            service = ExchangeService(job.account)
+            # We need a method to get specific balance, but fetch_balance returns all.
+            # Let's use fetch_balance from service (which uses CCXT).
+            # Note: service.fetch_balance() is not explicitly defined in ExchangeService wrapper (Wait, it is. I saw it earlier.)
+            # Let's check ExchangeService again to be sure. It has 'fetch_balance' method?
+            # Yes, line 88: def fetch_balance(self): return self.exchange.fetch_balance()
+            
+            all_balances = service.fetch_balance()
+            # standard ccxt structure: {'USDT': {'free': 100, ...}, ...}
+            # OR {'free': {'USDT': 100, ...}} ?
+            # CCXT 'total', 'free', 'used' usually.
+            # safe way: all_balances.get(currency, {}).get('free', 0)
+            
+            balance = float(all_balances.get(currency, {}).get('free', 0))
+            
+            if job.total_amount > 0:
+                runs_remaining = int(balance // float(job.total_amount))
+            else:
+                runs_remaining = 0
+                
+        except Exception as e:
+            # If error (e.g. API fail), just show 0 or error
+            balance = 0
+            runs_remaining = 0
+            # Maybe log it?
+            
+        context = {
+            'job': job,
+            'balance': balance,
+            'runs_remaining': runs_remaining,
+            'currency': currency
+        }
+        return render(request, 'core/partials/job_runway.html', context)
