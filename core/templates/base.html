@@ -19,19 +19,25 @@
     <nav class="bg-gray-800 border-b border-gray-700 p-4">
         <div class="container mx-auto flex justify-between items-center">
             <a href="{% url 'dashboard' %}" class="text-xl font-bold text-blue-400">DCA Bot</a>
-            <div>
+            <div class="flex items-center space-x-4">
                 {% if user.is_authenticated %}
                 {% if user.is_staff %}
-                <a href="{% url 'admin:index' %}" class="mr-4 text-purple-400 hover:text-purple-300 font-medium">Site
-                    Settings</a>
+                <a href="{% url 'admin:index' %}"
+                    class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold rounded uppercase tracking-wider transition-colors">
+                    Site Settings
+                </a>
                 <a href="{% url 'manage_exchanges' %}"
-                    class="mr-4 text-purple-400 hover:text-purple-300 font-medium">Manage
-                    Exchanges</a>
+                    class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded uppercase tracking-wider transition-colors">
+                    Manage Exchanges
+                </a>
                 {% endif %}
-                <a href="{% url 'profile' %}" class="mr-4 text-gray-400 hover:text-white">Hi, {{ user.username }}</a>
+
+                <a href="{% url 'profile' %}" class="mr-4 text-gray-400 hover:text-white">Hi,
+                    {{ user.first_name|default:user.username }}</a>
+
                 <form action="{% url 'logout' %}" method="post" class="inline">
                     {% csrf_token %}
-                    <button type="submit" class="text-sm text-red-400 hover:text-red-300">Logout</button>
+                    <button type="submit" class="text-sm text-red-400 hover:text-red-300 ml-2">Logout</button>
                 </form>
                 {% else %}
                 <a href="{% url 'login' %}" class="text-blue-400">Login</a>
