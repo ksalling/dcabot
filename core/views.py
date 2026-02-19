@@ -6,6 +6,9 @@ from django.views.generic import ListView, DetailView, CreateView, UpdateView, D
 from django.urls import reverse_lazy, reverse
 from django.http import HttpResponse
 from django.contrib import messages
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
 from django.contrib.auth.models import User
 from .models import AutobuyJob, ExchangeAccount, JobLog, Trade, JobToken, SupportedExchange
 from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm
@@ -528,4 +531,43 @@ class TradeListView(LoginRequiredMixin, ListView):
         context['current_sort'] = self.request.GET.get('sort', '-timestamp')
         context['search_query'] = self.request.GET.get('search', '')
         return context
+
+@login_required
+def export_trades_csv(request):
+    import csv
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="dca_trades.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Date/Time (UTC)', 'Job Name', 'Exchange', 'Pair', 'Type', 'Amount', 'Price', 'Cost', 'Fees'])
+
+    trades = Trade.objects.filter(user=request.user).order_by('-timestamp')
+    
+    # Apply same search filter if present (optional, but good UX)
+    search_query = request.GET.get('search', '')
+    if search_query:
+        from django.db.models import Q
+        trades = trades.filter(
+            Q(job_name__icontains=search_query) |
+            Q(exchange_name__icontains=search_query) |
+            Q(symbol__icontains=search_query) |
+            Q(order_type__icontains=search_query)
+        )
+
+    for trade in trades:
+        writer.writerow([
+            trade.timestamp.isoformat(),
+            trade.job_name,
+            trade.exchange_name,
+            trade.symbol,
+            trade.order_type,
+            trade.amount_received,
+            trade.purchase_price,
+            trade.amount_spent,
+            trade.fee_incurred,
+        ])
+
+    return response
 

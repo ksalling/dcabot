@@ -11,6 +11,7 @@ urlpatterns = [
     path('jobs/<int:pk>/history/', views.JobHistoryView.as_view(), name='job_history'),
     path('jobs/<int:pk>/runway/', views.JobRunwayView.as_view(), name='job_runway'),
     path('trades/', views.TradeListView.as_view(), name='trade_list'),
+    path('trades/export/', views.export_trades_csv, name='trade_export'),
     path('jobs/<int:pk>/clear-alert/', views.JobClearAlertView.as_view(), name='job_clear_alert'),
     path('accounts/add/', views.AccountCreateView.as_view(), name='account_create'),
     path('accounts/<int:pk>/toggle/', views.AccountToggleView.as_view(), name='account_toggle'),
