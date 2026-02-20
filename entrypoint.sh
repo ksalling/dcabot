@@ -24,4 +24,4 @@ fi
 # Start Gunicorn
 # Use PORT from environment or default to 8282
 echo "Starting Gunicorn on port ${PORT:-8282}..."
-exec gunicorn --bind 0.0.0.0:${PORT:-8282} --workers 3 dca_buyer.wsgi:application
+exec gunicorn --bind 0.0.0.0:${PORT:-8282} --workers 3 dca_bot.wsgi:application
