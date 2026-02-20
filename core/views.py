@@ -9,9 +9,18 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, View, RedirectView
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.urls import reverse_lazy, reverse
+from django.http import HttpResponse
+from django.contrib import messages
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
 from django.contrib.auth.models import User
-from .models import AutobuyJob, ExchangeAccount, JobLog, Trade, JobToken, SupportedExchange
-from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm
+from django.contrib.auth.forms import UserCreationForm
+from .models import AutobuyJob, ExchangeAccount, JobLog, Trade, JobToken, SupportedExchange, AppSettings
+from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm, AppSettingsForm
 from django.forms import inlineformset_factory
 from django.contrib.auth.views import PasswordChangeView
 
@@ -570,4 +579,60 @@ def export_trades_csv(request):
         ])
 
     return response
+
+class RegisterView(CreateView):
+    form_class = UserCreationForm
+    success_url = reverse_lazy('login')
+    template_name = 'registration/register.html'
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        messages.success(self.request, "Account created successfully! Please log in.")
+        return response
+
+class SiteSettingsView(UserPassesTestMixin, UpdateView):
+    model = AppSettings
+    form_class = AppSettingsForm
+    template_name = 'core/site_settings.html'
+    success_url = reverse_lazy('site_settings')
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def get_object(self, queryset=None):
+        return AppSettings.load()
+
+    def form_valid(self, form):
+        messages.success(self.request, "Site settings updated successfully.")
+        return super().form_valid(form)
+
+class TestEmailView(UserPassesTestMixin, View):
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def post(self, request, *args, **kwargs):
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        email = request.POST.get('test_email')
+        if not email:
+            messages.error(request, "Please provide an email address.")
+            return redirect('site_settings')
+
+        try:
+            # Force reload of settings in backend if needed
+            # But normally each send_mail instantiates a new backend which loads new settings
+            
+            send_mail(
+                subject='DCA Bot - Test Email',
+                message='This is a test email to verify your SMTP settings are configured correctly.',
+                from_email=None, # Uses default from settings/backend
+                recipient_list=[email],
+                fail_silently=False,
+            )
+            messages.success(request, f"Test email sent successfully to {email}.")
+        except Exception as e:
+            messages.error(request, f"Failed to send email: {str(e)}")
+            
+        return redirect('site_settings')
 

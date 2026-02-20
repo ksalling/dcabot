@@ -8,4 +8,5 @@ ALLOWED_HOSTS = ['*']
 # but base.py already handles local sqlite default.
 
 # Email backend for development
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = 'core.backends.DatabaseEmailBackend'

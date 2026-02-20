@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
-from .models import ExchangeAccount, AutobuyJob, JobToken, SupportedExchange
+from .models import ExchangeAccount, AutobuyJob, JobToken, SupportedExchange, AppSettings
 from .services.exchange_service import ExchangeService
 
 class UserProfileForm(forms.ModelForm):
@@ -105,3 +105,15 @@ class AutobuyJobForm(forms.ModelForm):
         self.fields['account'].queryset = ExchangeAccount.objects.filter(user=user)
 
 # JobToken formset will be needed for the dynamic token list
+
+class AppSettingsForm(forms.ModelForm):
+    class Meta:
+        model = AppSettings
+        fields = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'use_tls', 'default_from_email']
+        widgets = {
+            'smtp_password': forms.PasswordInput(render_value=True),
+        }
+        help_texts = {
+            'smtp_password': "Stored securely using encryption.",
+            'default_from_email': "The email address that automated emails will appear to come from.",
+        }

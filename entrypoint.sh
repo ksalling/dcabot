@@ -7,7 +7,7 @@ python3 manage.py collectstatic --noinput
 
 # Run migrations
 echo "Running migrations..."
-python3 manage.py migrate
+python3 manage.py migrate --noinput
 
 # Create superuser if env vars are present
 if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then

@@ -24,6 +24,10 @@
                 {% if user.is_staff %}
                 <a href="{% url 'admin:index' %}"
                     class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold rounded uppercase tracking-wider transition-colors">
+                    Site Database
+                </a>
+                <a href="{% url 'site_settings' %}"
+                    class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded uppercase tracking-wider transition-colors">
                     Site Settings
                 </a>
                 <a href="{% url 'manage_exchanges' %}"

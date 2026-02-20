@@ -20,4 +20,8 @@ urlpatterns = [
     path('profile/', views.ProfileView.as_view(), name='profile'),
     path('profile/password/', views.CustomPasswordChangeView.as_view(), name='password_change'),
     path('admin/exchanges/', views.ManageExchangesView.as_view(), name='manage_exchanges'),
+    path('register/', views.RegisterView.as_view(), name='register'),
+    # Settings
+    path('settings/', views.SiteSettingsView.as_view(), name='site_settings'),
+    path('settings/test-email/', views.TestEmailView.as_view(), name='test_email'),
 ]

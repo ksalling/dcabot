@@ -118,3 +118,32 @@ class JobLog(models.Model):
 
     def __str__(self):
         return f"[{self.level}] {self.timestamp}: {self.message[:50]}"
+
+class AppSettings(models.Model):
+    """
+    Singleton model to store application runtime settings, specifically email config.
+    """
+    smtp_host = models.CharField(max_length=255, default='smtp.sendgrid.net')
+    smtp_port = models.IntegerField(default=587)
+    smtp_user = models.CharField(max_length=255, blank=True)
+    smtp_password = EncryptedCharField(max_length=255, blank=True)
+    use_tls = models.BooleanField(default=True)
+    default_from_email = models.CharField(max_length=255, default='noreply@example.com')
+    
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        self.pk = 1 # Force singleton
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Application Settings"
+
+    class Meta:
+        verbose_name = "Application Settings"
+        verbose_name_plural = "Application Settings"
