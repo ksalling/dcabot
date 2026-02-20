@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import subscription_views
 
 urlpatterns = [
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
@@ -24,4 +25,10 @@ urlpatterns = [
     # Settings
     path('settings/', views.SiteSettingsView.as_view(), name='site_settings'),
     path('settings/test-email/', views.TestEmailView.as_view(), name='test_email'),
+
+    
+    # Subscription
+    path('subscription/', subscription_views.SubscriptionView.as_view(), name='subscription'),
+    path('subscription/checkout/', subscription_views.CreateCheckoutSessionView.as_view(), name='subscription_checkout'),
+    path('webhooks/polar/', subscription_views.PolarWebhookView.as_view(), name='polar_webhook'),
 ]

@@ -12,6 +12,7 @@ dependencies = [
     "django-environ>=0.13.0",
     "django-htmx>=1.27.0",
     "gunicorn>=25.1.0",
+    "polar-sdk>=0.28.4",
     "psycopg[binary]>=3.3.3",
     "whitenoise>=6.11.0",
 ]

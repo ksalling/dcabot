@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="min-h-[80vh] flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+
+    <div class="text-center max-w-3xl mx-auto mb-12">
+        <h1 class="text-4xl font-extrabold text-white sm:text-5xl sm:tracking-tight lg:text-6xl">
+            Unlock Full Automation
+        </h1>
+        <p class="mt-5 text-xl text-gray-400">
+            Start your journey to automated wealth building with our premium DCA tools.
+        </p>
+    </div>
+
+    <div class="relative w-full max-w-md mx-auto">
+        <!-- Decoration -->
+        <div
+            class="absolute -top-4 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob">
+        </div>
+        <div
+            class="absolute -bottom-8 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000">
+        </div>
+
+        <!-- Pricing Card -->
+        <div
+            class="relative bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden hover:border-purple-500 transition-colors duration-300">
+            <div class="p-8">
+                <h3 class="text-lg leading-6 font-medium text-gray-200">
+                    Pro Access
+                </h3>
+                <p class="mt-4 flex items-baseline text-white">
+                    <span class="text-5xl font-extrabold tracking-tight">$10</span>
+                    <span class="ml-1 text-xl font-semibold text-gray-400">/month</span>
+                </p>
+                <p class="mt-4 text-gray-400">
+                    Everything you need to automate your crypto strategy.
+                </p>
+
+                <ul class="mt-6 space-y-4">
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <!-- Heroicon name: outline/check -->
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Unlimited DCA Jobs</p>
+                    </li>
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Multiple Exchanges</p>
+                    </li>
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Detailed Portfolio Tracking</p>
+                    </li>
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Priority Support</p>
+                    </li>
+                </ul>
+            </div>
+            <div class="p-8 bg-gray-800 border-t border-gray-700">
+                <form action="{% url 'subscription_checkout' %}" method="POST">
+                    {% csrf_token %}
+                    <button type="submit"
+                        class="w-full flex items-center justify-center px-6 py-4 border border-transparent text-lg font-medium rounded-md text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 md:text-xl transition-all shadow-lg hover:shadow-purple-500/30">
+                        Subscribe Now
+                    </button>
+                    <p class="mt-4 text-xs text-center text-gray-500">
+                        Secured by Polar.sh. Cancel anytime.
+                    </p>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Simple blob animation */
+    @keyframes blob {
+        0% {
+            transform: translate(0px, 0px) scale(1);
+        }
+
+        33% {
+            transform: translate(30px, -50px) scale(1.1);
+        }
+
+        66% {
+            transform: translate(-20px, 20px) scale(0.9);
+        }
+
+        100% {
+            transform: translate(0px, 0px) scale(1);
+        }
+    }
+
+    .animate-blob {
+        animation: blob 7s infinite;
+    }
+
+    .animation-delay-2000 {
+        animation-delay: 2s;
+    }
+</style>
+{% endblock %}

@@ -147,3 +147,54 @@ class AppSettings(models.Model):
     class Meta:
         verbose_name = "Application Settings"
         verbose_name_plural = "Application Settings"
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='userprofile')
+    
+    # Polar.sh fields
+    polar_customer_id = models.CharField(max_length=255, blank=True)
+    polar_subscription_id = models.CharField(max_length=255, blank=True)
+    
+    # Subscription Status
+    # 'active', 'inactive', 'canceled', 'past_due'
+    subscription_status = models.CharField(max_length=50, default='inactive')
+    
+    # When the current period ends (for showing next billing date)
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    
+    # Admin Override to grant access without subscription
+    manual_access_granted = models.BooleanField(default=False, help_text=_("Grant full access without subscription"))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Profile for {self.user.username}"
+
+    @property
+    def has_access(self):
+        """
+        Check if user has access to premium features (Jobs).
+        """
+        # Admin override or Active Subscription
+        if self.manual_access_granted:
+            return True
+            
+        return self.subscription_status == 'active'
+
+# Signals to create/update UserProfile automatically
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def save_user_profile(sender, instance, **kwargs):
+    # Ensure profile exists incase it was deleted or user created before signals
+    if not hasattr(instance, 'userprofile'):
+        UserProfile.objects.create(user=instance)
+    else:
+        instance.userprofile.save()

@@ -116,3 +116,10 @@ AUTHENTICATION_BACKENDS = [
     'core.backends.EmailBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+# Polar.sh Configuration
+POLAR_ACCESS_TOKEN = env('POLAR_ACCESS_TOKEN', default=None)
+POLAR_ORGANIZATION_ID = env('POLAR_ORGANIZATION_ID', default=None)
+POLAR_WEBHOOK_SECRET = env('POLAR_WEBHOOK_SECRET', default=None)
+POLAR_PRODUCT_ID = env('POLAR_PRODUCT_ID', default=None)
+POLAR_SANDBOX = env.bool('POLAR_SANDBOX', default=True)

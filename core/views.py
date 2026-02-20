@@ -86,6 +86,21 @@ class JobCreateView(LoginRequiredMixin, CreateView):
             data['tokens'] = JobTokenFormSet()
         return data
 
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return super().dispatch(request, *args, **kwargs)
+            
+        # Check Subscription
+        if not hasattr(request.user, 'userprofile'):
+            from .models import UserProfile
+            UserProfile.objects.create(user=request.user)
+            
+        if not request.user.userprofile.has_access:
+            messages.warning(request, "You must have an active subscription to create new jobs.")
+            return redirect('subscription')
+            
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
         context = self.get_context_data()
         tokens = context['tokens']
@@ -195,6 +210,20 @@ class JobToggleView(LoginRequiredMixin, View):
         
         # If we are activating the job (currently inactive)
         if not job.is_active:
+            # Check Subscription before activating
+            if not request.user.userprofile.has_access:
+                messages.warning(request, "You must have an active subscription to activate jobs.")
+                 # If HTMX, return error message or redirect? 
+                 # For simplicity, if HTMX, maybe just return button as disabled or alert?
+                 # But we are in a POST.
+                if request.headers.get('HX-Request'):
+                    response = render(request, 'core/partials/job_card.html', {'job': job})
+                    # We can use hx-trigger to show toast?
+                    response['HX-Trigger'] = '{"showMessage": "Subscription Required"}' 
+                    # Assuming we have toast logic, if not just return job as is
+                    return response
+                return redirect('subscription')
+
             # 1. Clear previous alerts
             job.last_status = None
             job.last_error_message = ""

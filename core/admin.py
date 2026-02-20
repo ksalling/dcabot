@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import SupportedExchange, ExchangeAccount, AutobuyJob, JobToken, Trade, JobLog
+from .models import SupportedExchange, ExchangeAccount, AutobuyJob, JobToken, Trade, JobLog, UserProfile
 
 @admin.register(SupportedExchange)
 class SupportedExchangeAdmin(admin.ModelAdmin):
@@ -33,3 +33,9 @@ class JobLogAdmin(admin.ModelAdmin):
     list_display = ('timestamp', 'level', 'job', 'message')
     list_filter = ('level',)
     date_hierarchy = 'timestamp'
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'subscription_status', 'manual_access_granted', 'current_period_end')
+    list_filter = ('subscription_status', 'manual_access_granted')
+    search_fields = ('user__username', 'user__email', 'polar_customer_id')
