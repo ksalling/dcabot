@@ -10,6 +10,13 @@ SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)
 SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=False)
 CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=False)
 
+# CSRF Trusted Origins (Required for Django 4.0+)
+# Example: https://example.com,https://www.example.com
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+
+# Proxy SSL Header (Required if behind a reverse proxy terminating SSL)
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Ensure correct database config is enforced (though base.py tries to read env)
 DATABASES['default'] = env.db('DATABASE_URL')
 
