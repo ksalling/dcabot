@@ -1,30 +1,56 @@
-FROM python:3.11-slim-bookworm
+# Stage 1: Build stage
+FROM python:3.12-slim AS builder
 
-# Install UV
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    UV_SYSTEM_PYTHON=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install dependencies
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy project
-COPY . .
+# Install dependencies to a temporary directory
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Collect static files (placeholder, will run in entrypoint or build)
-# RUN uv run python manage.py collectstatic --noinput
+# Stage 2: Final production image
+FROM python:3.12-slim
 
-# Expose port
-EXPOSE 7060
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+WORKDIR /app
 
-ENTRYPOINT ["/entrypoint.sh"]
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user and necessary directories
+RUN useradd -m -r appuser && \
+    mkdir -p /app/static /app/media /app/logs && \
+    chown -R appuser:appuser /app
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Ensure entrypoint is executable
+RUN chmod +rx /app/entrypoint.sh
+
+# Switch to non-root user
+USER appuser
+
+# Expose the application port
+EXPOSE 8282
+
+# Use entrypoint script to handle startup tasks
+ENTRYPOINT ["/app/entrypoint.sh"]
