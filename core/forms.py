@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
+from django.contrib.auth.forms import UserCreationForm
 from .models import ExchangeAccount, AutobuyJob, JobToken, SupportedExchange, AppSettings
 from .services.exchange_service import ExchangeService
 
@@ -117,3 +118,30 @@ class AppSettingsForm(forms.ModelForm):
             'smtp_password': "Stored securely using encryption.",
             'default_from_email': "The email address that automated emails will appear to come from.",
         }
+
+class EmailUserCreationForm(UserCreationForm):
+    first_name = forms.CharField(required=True)
+    last_name = forms.CharField(required=True)
+    email = forms.EmailField(required=True, help_text="Required. Use a valid email address.")
+
+    class Meta:
+        model = User
+        fields = ("first_name", "last_name", "email")
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email")
+        if User.objects.filter(email=email).exists():
+            raise forms.ValidationError("A user with that email already exists.")
+        return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.email = self.cleaned_data["email"]
+        user.first_name = self.cleaned_data["first_name"]
+        user.last_name = self.cleaned_data["last_name"]
+        # Set username to email. Ensure it's not too long (User.username max_length=150)
+        # We assume email is validated regarding length by EmailField usually, but strict mapping:
+        user.username = user.email[:150] 
+        if commit:
+            user.save()
+        return user

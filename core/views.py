@@ -20,7 +20,7 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from .models import AutobuyJob, ExchangeAccount, JobLog, Trade, JobToken, SupportedExchange, AppSettings
-from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm, AppSettingsForm
+from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm, AppSettingsForm, EmailUserCreationForm
 from django.forms import inlineformset_factory
 from django.contrib.auth.views import PasswordChangeView
 
@@ -581,7 +581,7 @@ def export_trades_csv(request):
     return response
 
 class RegisterView(CreateView):
-    form_class = UserCreationForm
+    form_class = EmailUserCreationForm
     success_url = reverse_lazy('login')
     template_name = 'registration/register.html'
 
