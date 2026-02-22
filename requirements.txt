@@ -59,6 +59,7 @@ multidict==6.7.1
     #   yarl
 packaging==26.0
     # via gunicorn
+polar-sdk>=0.28.4
 propcache==0.4.1
     # via
     #   aiohttp
