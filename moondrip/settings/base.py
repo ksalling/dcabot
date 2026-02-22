@@ -1,5 +1,5 @@
 """
-Django settings for dca_bot project.
+Django settings for moondrip project.
 
 Common settings shared between development and production.
 """
@@ -9,7 +9,7 @@ import environ
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-# Adjust BASE_DIR since we are now in dca_bot/settings/
+# Adjust BASE_DIR since we are now in moondrip/settings/
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env()
@@ -46,7 +46,7 @@ MIDDLEWARE = [
     "django_htmx.middleware.HtmxMiddleware",
 ]
 
-ROOT_URLCONF = 'dca_bot.urls'
+ROOT_URLCONF = 'moondrip.urls'
 
 TEMPLATES = [
     {
@@ -63,7 +63,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'dca_bot.wsgi.application'
+WSGI_APPLICATION = 'moondrip.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases

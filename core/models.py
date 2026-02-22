@@ -39,7 +39,7 @@ class AutobuyJob(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='autobuy_jobs')
     account = models.ForeignKey(ExchangeAccount, on_delete=models.CASCADE, related_name='jobs')
     
-    name = models.CharField(max_length=100, default="DCA Job")
+    name = models.CharField(max_length=100, default="Moondrip Job")
     total_amount = models.DecimalField(max_digits=20, decimal_places=2, help_text=_("Total amount to spend per run (in quote currency, e.g. USDT)"))
     
     QUOTE_CURRENCIES = [
