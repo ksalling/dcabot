@@ -576,7 +576,7 @@ def export_trades_csv(request):
     from django.http import HttpResponse
 
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="dca_trades.csv"'
+    response['Content-Disposition'] = 'attachment; filename="moondrip_trades.csv"'
 
     writer = csv.writer(response)
     writer.writerow(['Date/Time (UTC)', 'Job Name', 'Exchange', 'Pair', 'Type', 'Amount', 'Price', 'Cost', 'Fees'])
@@ -653,7 +653,7 @@ class TestEmailView(UserPassesTestMixin, View):
             # But normally each send_mail instantiates a new backend which loads new settings
             
             send_mail(
-                subject='DCA Bot - Test Email',
+                subject='Moondrip - Test Email',
                 message='This is a test email to verify your SMTP settings are configured correctly.',
                 from_email=None, # Uses default from settings/backend
                 recipient_list=[email],
