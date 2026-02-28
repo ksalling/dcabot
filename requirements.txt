@@ -85,6 +85,7 @@ tzlocal==5.3.1
     # via apscheduler
 urllib3==2.6.3
     # via requests
+qrcode>=8.2
 whitenoise==6.11.0
     # via dca-bot (pyproject.toml)
 yarl==1.22.0
