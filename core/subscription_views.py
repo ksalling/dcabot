@@ -9,10 +9,36 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.contrib import messages
 from django.utils import timezone
-from .models import UserProfile
+from .models import UserProfile, SupportedExchange
 from polar_sdk import Polar
 
 logger = logging.getLogger(__name__)
+
+class AffiliateSignupView(LoginRequiredMixin, View):
+    def get(self, request):
+        return render(request, 'core/affiliate_signup.html')
+
+    def post(self, request):
+        user_id = request.POST.get('user_id')
+        if not user_id:
+            messages.error(request, "Please provide your Toobit User ID.")
+            return redirect('affiliate_signup')
+            
+        try:
+            exchange = SupportedExchange.objects.get(slug='toobit')
+        except SupportedExchange.DoesNotExist:
+            # Create Toobit exchange if it doesn't exist yet, for safety
+            exchange, _ = SupportedExchange.objects.get_or_create(slug='toobit', defaults={'name': 'Toobit', 'is_enabled': True})
+            
+        profile = request.user.userprofile
+        profile.subscription_tier = 'affiliate'
+        profile.referral_exchange = exchange
+        profile.referral_user_id = user_id
+        profile.subscription_status = 'active'
+        profile.save()
+        
+        messages.success(request, "Referral account activated! You now have Pro access for Toobit.")
+        return redirect('dashboard')
 
 class SubscriptionView(LoginRequiredMixin, View):
     def get(self, request):
@@ -114,6 +140,13 @@ class PolarWebhookView(View):
                 
                 status = data.get('status') # 'active', 'incomplete', 'canceled', 'revoked' etc.
                 profile.subscription_status = status
+                
+                # Webhook implies paid subscription
+                if status == 'active':
+                    profile.subscription_tier = 'paid'
+                elif status in ['canceled', 'revoked'] and profile.subscription_tier == 'paid':
+                     # If they were paid and cancel, revert to none.
+                     profile.subscription_tier = 'none'
                 
                 # Update period end
                 current_period_end = data.get('current_period_end')

@@ -58,6 +58,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.global_settings',
             ],
         },
     },
@@ -123,3 +124,7 @@ POLAR_ORGANIZATION_ID = env('POLAR_ORGANIZATION_ID', default=None)
 POLAR_WEBHOOK_SECRET = env('POLAR_WEBHOOK_SECRET', default=None)
 POLAR_PRODUCT_ID = env('POLAR_PRODUCT_ID', default=None)
 POLAR_SANDBOX = env.bool('POLAR_SANDBOX', default=True)
+
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default=None)
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default=None)

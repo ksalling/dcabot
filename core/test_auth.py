@@ -21,7 +21,9 @@ class AuthFeatureTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('qr_code_data_uri', response.context)
 
-    def test_api_key_protection_requires_2fa(self):
+    def test_api_key_protection_requires_2fa_when_globally_enforced(self):
+        self.settings.require_2fa_globally = True
+        self.settings.save()
         # User without 2FA tries to add exchange account
         self.client.login(username='test_auth_user', password='password123')
         self.assertFalse(self.user.userprofile.totp_enabled)
@@ -29,6 +31,17 @@ class AuthFeatureTests(TestCase):
         response = self.client.get(reverse('account_create'))
         # Should redirect to 2fa_setup
         self.assertRedirects(response, reverse('2fa_setup'))
+
+    def test_api_key_protection_bypassed_when_globally_disabled(self):
+        self.settings.require_2fa_globally = False
+        self.settings.save()
+        # User without 2FA tries to add exchange account
+        self.client.login(username='test_auth_user', password='password123')
+        self.assertFalse(self.user.userprofile.totp_enabled)
+        
+        response = self.client.get(reverse('account_create'))
+        # Should allow access
+        self.assertEqual(response.status_code, 200)
 
     def test_api_key_protection_allows_with_2fa(self):
         # User with 2FA tries to add exchange account

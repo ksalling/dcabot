@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import subscription_views
+from . import auth_views
 
 urlpatterns = [
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
@@ -27,8 +28,15 @@ urlpatterns = [
     path('settings/test-email/', views.TestEmailView.as_view(), name='test_email'),
 
     
+    # Auth / Security
+    path('2fa/setup/', auth_views.TwoFactorSetupView.as_view(), name='2fa_setup'),
+    path('2fa/verify/', auth_views.TwoFactorVerifyView.as_view(), name='2fa_verify'),
+    path('oauth/google/login/', auth_views.google_login, name='google_login'),
+    path('oauth/google/callback/', auth_views.google_callback, name='google_callback'),
+
     # Subscription
     path('subscription/', subscription_views.SubscriptionView.as_view(), name='subscription'),
     path('subscription/checkout/', subscription_views.CreateCheckoutSessionView.as_view(), name='subscription_checkout'),
+    path('subscription/affiliate/', subscription_views.AffiliateSignupView.as_view(), name='affiliate_signup'),
     path('webhooks/polar/', subscription_views.PolarWebhookView.as_view(), name='polar_webhook'),
 ]

@@ -153,7 +153,12 @@ class JobCreateView(LoginRequiredMixin, CreateView):
                          return self.render_to_response(self.get_context_data(form=form))
 
             self.object = form.save(commit=False)
-            self.object.is_active = True
+            
+            if not self.object.account.is_active or not self.object.account.exchange.is_enabled:
+                 self.object.is_active = False
+                 messages.warning(self.request, "Job created but is currently inactive because the exchange configuration is disabled.")
+            else:
+                 self.object.is_active = True
             
             # Initialize next_run to start_time so scheduler picks it up
             if not self.object.next_run:
@@ -172,6 +177,18 @@ class AccountCreateView(LoginRequiredMixin, CreateView):
     form_class = ExchangeAccountForm
     template_name = 'core/account_form.html'
     success_url = reverse_lazy('dashboard')
+
+    def dispatch(self, request, *args, **kwargs):
+        settings = AppSettings.load()
+        if settings.require_2fa_globally and request.user.is_authenticated and not request.user.userprofile.totp_enabled:
+            messages.error(request, "You must enable Two-Factor Authentication (2FA) before connecting exchange accounts to protect your API keys.")
+            return redirect('2fa_setup')
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
 
     def form_valid(self, form):
         form.instance.user = self.request.user
@@ -223,6 +240,24 @@ class JobToggleView(LoginRequiredMixin, View):
                     # Assuming we have toast logic, if not just return job as is
                     return response
                 return redirect('subscription')
+
+            # Prevent activating if the exchange itself is disabled globally
+            if not job.account.exchange.is_enabled:
+                messages.error(request, f"Cannot activate job. {job.account.exchange.name} is currently disabled by administrators.")
+                if request.headers.get('HX-Request'):
+                    response = render(request, 'core/partials/job_card.html', {'job': job})
+                    response['HX-Refresh'] = 'true'
+                    return response
+                return redirect('dashboard')
+                
+            # Prevent activating if the user's account is inactive
+            if not job.account.is_active:
+                messages.error(request, f"Cannot activate job. The connected exchange account '{job.account.nickname}' is inactive.")
+                if request.headers.get('HX-Request'):
+                    response = render(request, 'core/partials/job_card.html', {'job': job})
+                    response['HX-Refresh'] = 'true'
+                    return response
+                return redirect('dashboard')
 
             # 1. Clear previous alerts
             job.last_status = None
@@ -438,7 +473,12 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
             # Ensure next_run is set if missing (legacy)
             elif not self.object.next_run:
                  self.object.next_run = self.object.start_time
-            self.object.is_active = True
+                 
+            if not self.object.account.is_active or not self.object.account.exchange.is_enabled:
+                 self.object.is_active = False
+                 messages.warning(self.request, "Job updated but has been put into an inactive state due to exchange being disabled.")
+            else:
+                 self.object.is_active = True
             self.object.save()
             tokens.instance = self.object
             tokens.save()

@@ -13,7 +13,7 @@
         </p>
     </div>
 
-    <div class="relative w-full max-w-md mx-auto">
+    <div class="relative w-full max-w-5xl mx-auto mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 z-10">
         <!-- Decoration -->
         <div
             class="absolute -top-4 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob">
@@ -22,11 +22,11 @@
             class="absolute -bottom-8 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000">
         </div>
 
-        <!-- Pricing Card -->
+        <!-- Pro Pricing Card -->
         <div
             class="relative bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden hover:border-purple-500 transition-colors duration-300">
             <div class="p-8">
-                <h3 class="text-lg leading-6 font-medium text-gray-200">
+                <h3 class="text-lg leading-6 font-medium text-purple-400">
                     Pro Access
                 </h3>
                 <p class="mt-4 flex items-baseline text-white">
@@ -34,7 +34,7 @@
                     <span class="ml-1 text-xl font-semibold text-gray-400">/month</span>
                 </p>
                 <p class="mt-4 text-gray-400">
-                    Everything you need to automate your crypto strategy.
+                    Everything you need to automate your crypto strategy across any supported exchange.
                 </p>
 
                 <ul class="mt-6 space-y-4">
@@ -57,7 +57,7 @@
                                     d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
-                        <p class="ml-3 text-base text-gray-300">Multiple Exchanges</p>
+                        <p class="ml-3 text-base text-white font-bold">Multiple Exchanges Available</p>
                     </li>
                     <li class="flex items-start">
                         <div class="flex-shrink-0">
@@ -92,6 +92,76 @@
                         Secured by Polar.sh. Cancel anytime.
                     </p>
                 </form>
+            </div>
+        </div>
+
+        <!-- Referral Pricing Card -->
+        <div
+            class="relative bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden hover:border-blue-500 transition-colors duration-300">
+            <div class="p-8">
+                <h3 class="text-lg leading-6 font-medium text-blue-400">
+                    Referral Access
+                </h3>
+                <p class="mt-4 flex items-baseline text-white">
+                    <span class="text-5xl font-extrabold tracking-tight">Free</span>
+                </p>
+                <p class="mt-4 text-gray-400">
+                    Get Pro access by signing up to Toobit with our referral link.
+                </p>
+
+                <ul class="mt-6 space-y-4">
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <!-- Heroicon name: outline/check -->
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Unlimited Moondrip Jobs</p>
+                    </li>
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <!-- Heroicon name: outline/x or warning? let's use check but denote restriction -->
+                            <svg class="h-6 w-6 text-yellow-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-yellow-500 font-bold">Restricted to Toobit Exchange</p>
+                    </li>
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Detailed Portfolio Tracking</p>
+                    </li>
+                    <li class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="ml-3 text-base text-gray-300">Standard Support</p>
+                    </li>
+                </ul>
+            </div>
+            <div class="p-8 bg-gray-800 border-t border-gray-700">
+                <a href="{% url 'affiliate_signup' %}"
+                    class="w-full flex items-center justify-center px-6 py-4 border border-blue-500 text-lg font-medium rounded-md text-white bg-transparent hover:bg-blue-600 transition-all shadow-lg">
+                    Claim Free Access
+                </a>
+                <p class="mt-4 text-xs text-center text-gray-500">
+                    Requires a valid Toobit UID signed up via our referral link.
+                </p>
             </div>
         </div>
     </div>

@@ -31,6 +31,19 @@ class ExchangeAccountForm(forms.ModelForm):
             'api_passphrase': 'API Passphrase (if required)',
         }
 
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user and hasattr(user, 'userprofile'):
+            if user.userprofile.subscription_tier == 'affiliate':
+                if user.userprofile.referral_exchange:
+                    self.fields['exchange'].queryset = SupportedExchange.objects.filter(id=user.userprofile.referral_exchange_id)
+                else:
+                    self.fields['exchange'].queryset = SupportedExchange.objects.none()
+            else:
+                self.fields['exchange'].queryset = SupportedExchange.objects.filter(is_enabled=True)
+        else:
+            self.fields['exchange'].queryset = SupportedExchange.objects.filter(is_enabled=True)
+
     def clean(self):
         cleaned_data = super().clean()
         exchange_data = cleaned_data.get('exchange')
@@ -103,14 +116,22 @@ class AutobuyJobForm(forms.ModelForm):
 
     def __init__(self, user, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['account'].queryset = ExchangeAccount.objects.filter(user=user)
+        from django.db.models import Q
+        if self.instance and self.instance.pk:
+            self.fields['account'].queryset = ExchangeAccount.objects.filter(
+                Q(user=user, is_active=True, exchange__is_enabled=True) | Q(pk=self.instance.account.pk)
+            )
+        else:
+            self.fields['account'].queryset = ExchangeAccount.objects.filter(
+                user=user, is_active=True, exchange__is_enabled=True
+            )
 
 # JobToken formset will be needed for the dynamic token list
 
 class AppSettingsForm(forms.ModelForm):
     class Meta:
         model = AppSettings
-        fields = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'use_tls', 'default_from_email']
+        fields = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'use_tls', 'default_from_email', 'allow_google_oauth', 'require_2fa_globally']
         widgets = {
             'smtp_password': forms.PasswordInput(render_value=True),
         }

@@ -36,6 +36,6 @@ class JobLogAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'subscription_status', 'manual_access_granted', 'current_period_end')
-    list_filter = ('subscription_status', 'manual_access_granted')
-    search_fields = ('user__username', 'user__email', 'polar_customer_id')
+    list_display = ('user', 'subscription_status', 'subscription_tier', 'referral_exchange', 'manual_access_granted', 'current_period_end')
+    list_filter = ('subscription_status', 'subscription_tier', 'referral_exchange', 'manual_access_granted')
+    search_fields = ('user__username', 'user__email', 'polar_customer_id', 'referral_user_id')

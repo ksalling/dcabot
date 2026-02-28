@@ -131,8 +131,14 @@
             <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
                 <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
                     <h3 class="text-lg font-bold text-white">Exchange Accounts</h3>
+                    {% if not app_settings.require_2fa_globally or user.userprofile.totp_enabled %}
                     <a href="{% url 'account_create' %}"
                         class="text-blue-400 hover:text-blue-300 text-xs uppercase font-bold text-sm">+ Add</a>
+                    {% else %}
+                    <a href="{% url '2fa_setup' %}"
+                        class="text-amber-400 hover:text-amber-300 text-xs uppercase font-bold text-sm"
+                        title="Requires 2FA">Enable 2FA to Add</a>
+                    {% endif %}
                 </div>
                 <div class="p-0">
                     {% if accounts %}
@@ -155,8 +161,13 @@
                     </ul>
                     {% else %}
                     <div class="p-6 text-center text-gray-500">
+                        {% if not app_settings.require_2fa_globally or user.userprofile.totp_enabled %}
                         No accounts. <a href="{% url 'account_create' %}" class="text-blue-400 hover:underline">Connect
                             one</a>.
+                        {% else %}
+                        No accounts. <a href="{% url '2fa_setup' %}" class="text-amber-400 hover:underline">Enable 2FA
+                            to connect an account</a>.
+                        {% endif %}
                     </div>
                     {% endif %}
                 </div>

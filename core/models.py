@@ -130,6 +130,10 @@ class AppSettings(models.Model):
     use_tls = models.BooleanField(default=True)
     default_from_email = models.CharField(max_length=255, default='noreply@example.com')
     
+    # Auth Settings
+    allow_google_oauth = models.BooleanField(default=True, help_text="Allow users to login or link accounts via Google.")
+    require_2fa_globally = models.BooleanField(default=False, help_text="Force all users to configure and use 2FA.")
+
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
@@ -159,11 +163,24 @@ class UserProfile(models.Model):
     # 'active', 'inactive', 'canceled', 'past_due'
     subscription_status = models.CharField(max_length=50, default='inactive')
     
+    TIER_CHOICES = [
+        ('none', 'None'),
+        ('paid', 'Paid'),
+        ('affiliate', 'Affiliate'),
+    ]
+    subscription_tier = models.CharField(max_length=20, choices=TIER_CHOICES, default='none')
+    referral_exchange = models.ForeignKey('SupportedExchange', on_delete=models.SET_NULL, null=True, blank=True, related_name='affiliate_profiles')
+    referral_user_id = models.CharField(max_length=100, blank=True)
+    
     # When the current period ends (for showing next billing date)
     current_period_end = models.DateTimeField(null=True, blank=True)
     
     # Admin Override to grant access without subscription
     manual_access_granted = models.BooleanField(default=False, help_text=_("Grant full access without subscription"))
+
+    # Security
+    totp_enabled = models.BooleanField(default=False)
+    totp_secret = EncryptedCharField(max_length=255, blank=True, null=True, help_text="User's TOTP secret for 2FA")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -176,11 +193,11 @@ class UserProfile(models.Model):
         """
         Check if user has access to premium features (Jobs).
         """
-        # Admin override or Active Subscription
+        # Admin override, Affiliate Tier, or Active Paid Subscription
         if self.manual_access_granted:
             return True
             
-        return self.subscription_status == 'active'
+        return self.subscription_status == 'active' or self.subscription_tier == 'affiliate'
 
 # Signals to create/update UserProfile automatically
 from django.db.models.signals import post_save

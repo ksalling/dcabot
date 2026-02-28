@@ -5,7 +5,8 @@ from apscheduler.triggers.cron import CronTrigger
 from django_apscheduler.jobstores import DjangoJobStore
 from django_apscheduler.models import DjangoJobExecution
 from django_apscheduler import util
-from core.models import AutobuyJob
+from core.models import AutobuyJob, ExchangeAccount, UserProfile, AppSettings
+from django.core.mail import send_mail
 from core.services.trade_executor import TradeExecutor
 from django.utils import timezone
 import logging
@@ -36,6 +37,53 @@ def check_and_run_jobs():
         except Exception as e:
             logger.error(f"Error executing job {job.id}: {e}")
 
+def enforce_subscription_limits():
+    """
+    Check for users whose subscriptions have expired or are inactive.
+    Disable their active accounts and jobs and notify them via email.
+    """
+    profiles = UserProfile.objects.all()
+    app_settings = AppSettings.load()
+    default_from = app_settings.default_from_email or 'noreply@example.com'
+    
+    for profile in profiles:
+        if not profile.has_access:
+            user = profile.user
+            # Find active items
+            active_jobs = AutobuyJob.objects.filter(user=user, is_active=True)
+            active_accounts = ExchangeAccount.objects.filter(user=user, is_active=True)
+            
+            jobs_count = active_jobs.count()
+            accounts_count = active_accounts.count()
+            
+            if jobs_count > 0 or accounts_count > 0:
+                # Deactivate
+                active_jobs.update(is_active=False, last_status='warning', last_error_message='Subscription inactive')
+                active_accounts.update(is_active=False)
+                
+                logger.info(f"Disabled {jobs_count} jobs and {accounts_count} accounts for user {user.username} due to inactive subscription.")
+                
+                # Send email notification
+                if user.email:
+                    subject = "Action Required: Moondrip Pro Features Disabled"
+                    message = (
+                        f"Hello {user.first_name or user.username},\n\n"
+                        "Your Moondrip Pro subscription has expired or is inactive. "
+                        f"As a result, we have automatically disabled {jobs_count} active job(s) and {accounts_count} active exchange connection(s).\n\n"
+                        "To resume your automated trading workflows and re-enable your accounts, please log in and upgrade to Pro or link a valid referral account.\n\n"
+                        "Best,\nThe Moondrip Team"
+                    )
+                    try:
+                        send_mail(
+                            subject,
+                            message,
+                            default_from,
+                            [user.email],
+                            fail_silently=True,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send deactivation email to {user.email}: {e}")
+
 @util.close_old_connections
 def delete_old_job_executions(max_age=604_800):
     """
@@ -64,6 +112,16 @@ class Command(BaseCommand):
             replace_existing=True,
         )
         logger.info("Added job 'check_and_run_jobs'.")
+
+        # Schedule the subscription enforcer to run every 5 minutes
+        scheduler.add_job(
+            enforce_subscription_limits,
+            trigger=CronTrigger(minute="*/5"),
+            id="enforce_subscription_limits",
+            max_instances=1,
+            replace_existing=True,
+        )
+        logger.info("Added job 'enforce_subscription_limits'.")
 
         scheduler.add_job(
             delete_old_job_executions,
