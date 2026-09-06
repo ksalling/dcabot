@@ -2,7 +2,7 @@
 {% block content %}
 <div class="max-w-lg mx-auto bg-gray-800 p-6 rounded-lg shadow-lg mt-10">
     <h2 class="text-2xl font-bold mb-6 text-white">Connect Exchange</h2>
-    <form method="post" class="space-y-6">
+    <form id="connect-account-form" method="post" class="space-y-6">
         {% csrf_token %}
 
         {% if form.non_field_errors %}
@@ -31,9 +31,9 @@
         </div>
         {% endfor %}
 
-        <button type="submit"
-            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition duration-200">
-            Connect
+        <button type="submit" id="submit-btn"
+            class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 px-4 rounded transition duration-200 flex items-center justify-center">
+            <span id="btn-text">Connect Exchange</span>
         </button>
     </form>
 </div>
@@ -50,4 +50,31 @@
         color: white;
     }
 </style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('connect-account-form');
+        const submitBtn = document.getElementById('submit-btn');
+        let isSubmitting = false;
+
+        if (form && submitBtn) {
+            form.addEventListener('submit', function (e) {
+                if (isSubmitting) {
+                    e.preventDefault();
+                    return false;
+                }
+                isSubmitting = true;
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
+                submitBtn.innerHTML = `
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    Validating credentials with exchange...
+                `;
+            });
+        }
+    });
+</script>
 {% endblock %}

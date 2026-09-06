@@ -10,31 +10,46 @@ from core.services.trade_executor import TradeExecutor
 from django.utils import timezone
 import logging
 
+from core.services.notification_service import NotificationService
+from core.models import JobLog
+
 logger = logging.getLogger(__name__)
 
 def check_and_run_jobs():
     """
     Check for jobs that are due and run them.
-    This simple implementation just checks DB for due jobs.
-    In a more complex setup, we might schedule each job individually in APScheduler.
-    But for dynamic user jobs, polling DB every minute is often simpler and robust.
+    Also checks for paused jobs that were due and records a skip notice & alert.
     """
     now = timezone.now()
-    # Find active jobs where next_run <= now OR next_run is null (first run)
-    # But usually creating a job sets next_run.
     
-    # We grab jobs that are active and due
-    jobs = AutobuyJob.objects.filter(is_active=True, next_run__lte=now)
-    
-    for job in jobs:
-        logger.info(f"Triggering job {job.id}")
+    # 1. Grab jobs that are active and due
+    active_jobs = AutobuyJob.objects.filter(is_active=True, next_run__lte=now)
+    for job in active_jobs:
+        logger.info(f"Triggering active job {job.id} ({job.name})")
         executor = TradeExecutor()
-        # We might want to run this async/threaded if many jobs?
-        # For now, blocking in this loop is okay if few jobs.
         try:
             executor.execute_job(job.id)
         except Exception as e:
             logger.error(f"Error executing job {job.id}: {e}")
+
+    # 2. Check for paused/inactive jobs that were scheduled and due
+    paused_due_jobs = AutobuyJob.objects.filter(is_active=False, next_run__isnull=False, next_run__lte=now)
+    for job in paused_due_jobs:
+        logger.info(f"Job {job.id} ({job.name}) is due but paused. Skipping run and rolling next_run forward.")
+        skip_msg = f"Scheduled trade was skipped because job '{job.name}' is currently paused."
+        job.last_status = 'warning'
+        job.last_error_message = skip_msg
+        job.next_run = job.calculate_next_run(after_time=now)
+        job.save(update_fields=['last_status', 'last_error_message', 'next_run'])
+        
+        JobLog.objects.create(
+            job=job,
+            user=job.user,
+            level='WARNING',
+            message=skip_msg
+        )
+        
+        NotificationService.send_trade_skipped_paused_email(job)
 
 @util.close_old_connections
 def delete_old_job_executions(max_age=604_800):

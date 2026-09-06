@@ -56,7 +56,6 @@ class AutobuyJob(models.Model):
     start_time = models.DateTimeField()
     end_date = models.DateTimeField(null=True, blank=True, help_text=_("Optional end date to stop the job"))
     last_run = models.DateTimeField(null=True, blank=True)
-    last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
     
     STATUS_CHOICES = [
@@ -68,6 +67,52 @@ class AutobuyJob(models.Model):
     last_error_message = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def calculate_next_run(self, after_time=None):
+        """
+        Calculate the next scheduled run time starting from start_time, aligned with the configured interval,
+        ensuring next_run is strictly in the future relative to after_time (defaults to timezone.now()).
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        import math
+
+        if not self.start_time:
+            return None
+
+        current = after_time or timezone.now()
+        
+        # If start_time is already in the future, that's our next_run
+        if self.start_time > current:
+            next_schedule = self.start_time
+        else:
+            # start_time is in the past: compute future occurrences preserving time of day
+            if self.interval == 'hourly':
+                elapsed_seconds = (current - self.start_time).total_seconds()
+                hours_to_add = math.floor(elapsed_seconds / 3600) + 1
+                next_schedule = self.start_time + timedelta(hours=hours_to_add)
+            elif self.interval == 'daily':
+                elapsed_seconds = (current - self.start_time).total_seconds()
+                days_to_add = math.floor(elapsed_seconds / 86400) + 1
+                next_schedule = self.start_time + timedelta(days=days_to_add)
+            elif self.interval == 'weekly':
+                elapsed_seconds = (current - self.start_time).total_seconds()
+                weeks_to_add = math.floor(elapsed_seconds / (86400 * 7)) + 1
+                next_schedule = self.start_time + timedelta(weeks=weeks_to_add)
+            elif self.interval == 'monthly':
+                elapsed_seconds = (current - self.start_time).total_seconds()
+                months_to_add = math.floor(elapsed_seconds / (86400 * 30)) + 1
+                next_schedule = self.start_time + timedelta(days=months_to_add * 30)
+            else:
+                elapsed_seconds = (current - self.start_time).total_seconds()
+                days_to_add = math.floor(elapsed_seconds / 86400) + 1
+                next_schedule = self.start_time + timedelta(days=days_to_add)
+
+        # Check end date
+        if self.end_date and next_schedule > self.end_date:
+            return None
+
+        return next_schedule
 
     def __str__(self):
         return f"{self.name} - {self.get_interval_display()}"
@@ -164,6 +209,11 @@ class UserProfile(models.Model):
     
     # Admin Override to grant access without subscription
     manual_access_granted = models.BooleanField(default=False, help_text=_("Grant full access without subscription"))
+
+    # Email Notification Preferences
+    notify_trade_success = models.BooleanField(default=True, help_text=_("Email alert when a trade executes successfully"))
+    notify_trade_failed = models.BooleanField(default=True, help_text=_("Email alert when a trade fails"))
+    notify_trade_skipped_paused = models.BooleanField(default=True, help_text=_("Email alert when a trade is skipped because the job was paused"))
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

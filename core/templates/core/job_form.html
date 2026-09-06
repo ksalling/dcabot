@@ -11,10 +11,19 @@
 </div>
 
 <div class="max-w-3xl mx-auto bg-gray-800 p-6 rounded-lg shadow-lg">
-    <h2 class="text-2xl font-bold mb-6 text-white">{% if job %}Edit Job: {{ job.name }}{% else %}Create New Job
-        {% endif %}</h2>
-    <form method="post" class="space-y-6">
+    <h2 class="text-2xl font-bold mb-6 text-white">
+        {% if job %}
+        Edit Job: {{ job.name }}
+        {% if not job.is_active %}
+        <span class="text-xs bg-yellow-900/60 text-yellow-300 border border-yellow-700/60 px-2 py-0.5 rounded-full font-medium ml-2">Paused</span>
+        {% endif %}
+        {% else %}
+        Create New Job
+        {% endif %}
+    </h2>
+    <form id="job-form" method="post" class="space-y-6">
         {% csrf_token %}
+        <input type="hidden" name="action_active" id="action_active" value="">
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             {% for field in form %}
@@ -38,12 +47,20 @@
 
         <div class="border-t border-gray-700 pt-6">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-medium text-white">Token Allocation</h3>
+                <div>
+                    <h3 class="text-lg font-medium text-white">Token Allocation</h3>
+                    <p id="pairs-status-msg" class="text-xs text-gray-400 mt-0.5">Select an exchange account to load available trading pairs.</p>
+                </div>
                 <div class="text-sm">
                     <span id="allocation-counter" class="font-bold text-red-400">0%</span>
                     <span class="text-gray-400">/ 100%</span>
+                    <span id="allocation-remaining" class="text-xs text-gray-400 ml-1 font-medium">(100% Remaining)</span>
                 </div>
             </div>
+
+            <datalist id="available-pairs-list">
+                <!-- Dynamically populated based on selected Exchange Account & Quote Currency -->
+            </datalist>
 
             {{ tokens.management_form }}
             <div id="token-formset" class="space-y-4">
@@ -89,13 +106,49 @@
             <div></div> <!-- Spacer -->
             {% endif %}
 
-            <button type="submit"
-                class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded transition duration-200">
-                {% if job %}Update Job{% else %}Create Job{% endif %}
+            <button type="button" id="job-submit-btn" onclick="handleJobSubmitButtonClick()"
+                class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-6 rounded transition duration-200 flex items-center justify-center cursor-pointer">
+                <span id="job-submit-text">{% if job %}Update Job{% else %}Create Job{% endif %}</span>
             </button>
         </div>
     </form>
 </div>
+
+<!-- Paused Job Update Option Modal -->
+{% if job and not job.is_active %}
+<div id="pausedJobUpdateModal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+        <div class="flex items-start gap-3">
+            <div class="p-2 rounded-full bg-yellow-900/50 text-yellow-400 border border-yellow-700/50">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white">Job is Currently Paused</h3>
+                <p class="text-sm text-gray-300 mt-1">
+                    <strong>{{ job.name }}</strong> is currently paused and will not execute automated trades. Would you like to resume this job now or keep it paused?
+                </p>
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-end gap-2.5 pt-3 border-t border-gray-700">
+            <button type="button" id="btn-cancel-modal" onclick="closePausedJobModal()"
+                class="px-4 py-2 rounded text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:cursor-not-allowed">
+                Cancel
+            </button>
+            <button type="button" id="btn-keep-paused" onclick="submitPausedJobChoice('keep_paused')"
+                class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white font-semibold rounded text-sm transition flex items-center justify-center gap-2 cursor-pointer border border-gray-600 disabled:opacity-40 disabled:pointer-events-none disabled:cursor-not-allowed">
+                <span id="text-keep-paused">Keep Paused & Update</span>
+            </button>
+            <button type="button" id="btn-enable-job" onclick="submitPausedJobChoice('enable')"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg disabled:opacity-40 disabled:pointer-events-none disabled:cursor-not-allowed">
+                <span id="text-enable-job">Enable & Update Job</span>
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Delete Confirmation Modal -->
 {% if job %}
@@ -110,11 +163,11 @@
                 class="px-4 py-2 text-gray-300 hover:text-white transition">
                 Cancel
             </button>
-            <form action="{% url 'job_delete' pk=job.pk %}" method="post">
+            <form id="job-delete-form" action="{% url 'job_delete' pk=job.pk %}" method="post">
                 {% csrf_token %}
-                <button type="submit"
-                    class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded font-medium transition">
-                    Delete
+                <button type="submit" id="job-delete-btn"
+                    class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded font-medium transition flex items-center justify-center">
+                    <span>Delete</span>
                 </button>
             </form>
         </div>
@@ -122,11 +175,125 @@
 </div>
 {% endif %}
 
+<script>
+    const isPausedJob = {% if job and not job.is_active %}true{% else %}false{% endif %};
+
+    function handleJobSubmitButtonClick() {
+        const form = document.getElementById('job-form');
+        if (!form) return;
+
+        // If the job is paused, show the option modal to enable vs keep paused
+        if (isPausedJob) {
+            const modal = document.getElementById('pausedJobUpdateModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                return;
+            }
+        }
+
+        // Otherwise submit standard
+        directSubmitForm();
+    }
+
+    function closePausedJobModal() {
+        const modal = document.getElementById('pausedJobUpdateModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function submitPausedJobChoice(choice) {
+        const actionInput = document.getElementById('action_active');
+        if (actionInput) actionInput.value = choice;
+
+        const enableBtn = document.getElementById('btn-enable-job');
+        const keepPausedBtn = document.getElementById('btn-keep-paused');
+        const cancelBtn = document.getElementById('btn-cancel-modal');
+        const submitBtn = document.getElementById('job-submit-btn');
+
+        // Disable all buttons immediately and remove pointer events
+        [enableBtn, keepPausedBtn, cancelBtn, submitBtn].forEach(btn => {
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('pointer-events-none', 'cursor-not-allowed');
+            }
+        });
+
+        // Disable token inputs and buttons
+        document.querySelectorAll('.delete-token-btn, #add-token').forEach(b => {
+            b.disabled = true;
+            b.classList.add('pointer-events-none', 'cursor-not-allowed');
+        });
+
+        const clickedBtn = (choice === 'enable') ? enableBtn : keepPausedBtn;
+        const otherBtn = (choice === 'enable') ? keepPausedBtn : enableBtn;
+
+        if (otherBtn) {
+            otherBtn.classList.add('opacity-40');
+        }
+
+        if (clickedBtn) {
+            clickedBtn.classList.add('opacity-80');
+            clickedBtn.innerHTML = `
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                Updating...
+            `;
+        }
+
+        document.getElementById('job-form').submit();
+    }
+
+    function directSubmitForm() {
+        const form = document.getElementById('job-form');
+        const submitBtn = document.getElementById('job-submit-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            submitBtn.innerHTML = `
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                Processing...
+            `;
+        }
+        form.submit();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const deleteForm = document.getElementById('job-delete-form');
+        const deleteBtn = document.getElementById('job-delete-btn');
+        if (deleteForm && deleteBtn) {
+            let isDeleting = false;
+            deleteForm.addEventListener('submit', function (e) {
+                if (isDeleting) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                isDeleting = true;
+                deleteBtn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+                deleteBtn.innerHTML = `
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    Deleting...
+                `;
+                setTimeout(() => {
+                    deleteBtn.disabled = true;
+                }, 10);
+            });
+        }
+    });
+</script>
+
 {% include 'core/partials/formset_script.html' %}
 </div>
 
 <style>
-    /* Quick fix for default django widget styling on dark mode if we didn't add classes in forms.py */
+    /* Styling for default django widgets */
     input[type="text"],
     input[type="number"],
     input[type="datetime-local"],
@@ -135,9 +302,7 @@
         padding: 0.5rem;
         border-radius: 0.375rem;
         background-color: #374151;
-        /* gray-700 */
         border: 1px solid #4B5563;
-        /* gray-600 */
         color: white;
     }
 
@@ -145,60 +310,7 @@
     select:focus {
         outline: none;
         border-color: #3B82F6;
-        /* blue-500 */
         box-shadow: 0 0 0 2px #3B82F6;
     }
 </style>
-</style>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const totalAmountInput = document.getElementById('id_total_amount');
-        const tokenFormset = document.getElementById('token-formset');
-
-        function updateAllocationAmounts() {
-            const totalAmount = parseFloat(totalAmountInput.value) || 0;
-            const percentageInputs = tokenFormset.querySelectorAll('input[name$="-percentage"]');
-
-            percentageInputs.forEach(input => {
-                const percentage = parseFloat(input.value) || 0;
-                const amount = (percentage / 100) * totalAmount;
-
-                // Find or create the display element
-                let displaySpan = input.parentNode.querySelector('.allocation-amount');
-                if (!displaySpan) {
-                    displaySpan = document.createElement('div');
-                    displaySpan.className = 'allocation-amount text-xs text-green-400 mt-1 font-mono';
-                    input.parentNode.appendChild(displaySpan);
-                }
-
-                displaySpan.textContent = `≈ ${amount.toFixed(2)} USDT`; // Assuming USDT/Quote
-            });
-        }
-
-        // Listen for changes on Total Amount
-        if (totalAmountInput) {
-            totalAmountInput.addEventListener('input', updateAllocationAmounts);
-        }
-
-        // Listen for changes on Percentage inputs (using delegation for dynamic forms)
-        tokenFormset.addEventListener('input', function (e) {
-            if (e.target.name && e.target.name.includes('percentage')) {
-                updateAllocationAmounts();
-            }
-        });
-
-        // Initial update
-        updateAllocationAmounts();
-
-        // Hook into the "Add Another Coin" button to update new forms
-        const addTokenBtn = document.getElementById('add-token');
-        if (addTokenBtn) {
-            addTokenBtn.addEventListener('click', function () {
-                // Wait a tick for the new form to be added to DOM
-                setTimeout(updateAllocationAmounts, 100);
-            });
-        }
-    });
-</script>
 {% endblock %}

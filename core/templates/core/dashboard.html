@@ -3,210 +3,163 @@
 {% block content %}
 <div class="space-y-8">
 
-    <!-- Header / Portfolio Overview -->
-    <div>
-        <h2 class="text-3xl font-bold text-white mb-6">Dashboard</h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Total Value -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-blue-500">
-                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">Portfolio Value</h3>
-                <p class="text-3xl font-bold text-white mt-1">${{ portfolio.total_current_value|stringformat:".2f" }}
-                </p>
-                <p class="text-xs text-gray-500 mt-2">Estimated based on current prices</p>
+    <!-- Header / Controls -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-white">Dashboard</h2>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- Auto-refresh interval selector & live countdown -->
+            <div class="inline-flex items-center bg-gray-800 border border-gray-700 rounded-md px-3 py-1 text-xs text-gray-300">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-2" id="refresh-pulse-dot"></span>
+                <label for="auto-refresh-select" class="text-gray-400 mr-2 font-medium">Auto-refresh:</label>
+                <select id="auto-refresh-select" 
+                        class="bg-gray-900 border border-gray-700 text-white rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500 cursor-pointer">
+                    <option value="30000">30s</option>
+                    <option value="60000">1m</option>
+                    <option value="300000" selected>5m (Default)</option>
+                    <option value="600000">10m</option>
+                    <option value="1800000">30m</option>
+                    <option value="0">Off</option>
+                </select>
+                <!-- Live Seconds Countdown Display -->
+                <span id="refresh-countdown" class="font-mono text-gray-400 text-xs ml-2 font-semibold"></span>
             </div>
 
-            <!-- Cost Basis -->
-            <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-gray-500">
-                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">Total Invested</h3>
-                <p class="text-3xl font-bold text-white mt-1">${{ portfolio.total_cost_basis|stringformat:".2f" }}</p>
-                <p class="text-xs text-gray-500 mt-2">Total cost basis across all trades</p>
-            </div>
-
-            <!-- PnL $ -->
-            <div
-                class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 {% if portfolio.total_pnl >= 0 %}border-green-500{% else %}border-red-500{% endif %}">
-                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">Total Profit/Loss</h3>
-                <p
-                    class="text-3xl font-bold mt-1 {% if portfolio.total_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                    {{ portfolio.total_pnl|stringformat:".2f" }}
-                </p>
-                <p class="text-xs text-gray-500 mt-2">Unrealized PnL</p>
-            </div>
-
-            <!-- PnL % -->
-            <div
-                class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 {% if portfolio.total_pnl_percent >= 0 %}border-green-500{% else %}border-red-500{% endif %}">
-                <h3 class="text-gray-400 text-sm font-medium uppercase tracking-wider">ROI</h3>
-                <p
-                    class="text-3xl font-bold mt-1 {% if portfolio.total_pnl_percent >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                    {{ portfolio.total_pnl_percent|stringformat:".2f" }}%
-                </p>
-                <p class="text-xs text-gray-500 mt-2">Return on Investment</p>
-            </div>
+            <!-- Manual Refresh Button -->
+            <button 
+                id="manual-refresh-btn"
+                onclick="triggerDashboardRefresh()"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white rounded-md border border-gray-700 text-xs font-semibold tracking-wide transition-colors cursor-pointer"
+                title="Refresh dashboard data now">
+                <svg id="refresh-spinner" class="htmx-indicator animate-spin h-3.5 w-3.5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>↻ Refresh</span>
+            </button>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
-
-        <!-- Left Column (Jobs & Accounts) -->
-        <div class="xl:col-span-2 space-y-8">
-
-            <!-- Active Jobs Section -->
-            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-white">Active Jobs</h3>
-                    <a href="{% url 'job_create' %}"
-                        class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide transition-colors">+
-                        New Job</a>
-                </div>
-                <div class="p-6">
-                    {% if jobs %}
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {% for job in jobs %}
-                        {% include 'core/partials/job_card.html' with job=job %}
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <div class="text-center py-8 text-gray-500">
-                        No active jobs. <a href="{% url 'job_create' %}" class="text-blue-400 hover:underline">Start one
-                            now</a>.
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- Holdings / PnL Table -->
-            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-700">
-                    <h3 class="text-lg font-bold text-white">Portfolio Holdings</h3>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left text-gray-400">
-                        <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
-                            <tr>
-                                <th class="px-6 py-3">Asset</th>
-                                <th class="px-6 py-3 text-right">Holdings</th>
-                                <th class="px-6 py-3 text-right">Avg Price</th>
-                                <th class="px-6 py-3 text-right">Current Price</th>
-                                <th class="px-6 py-3 text-right">Total Fees</th>
-                                <th class="px-6 py-3 text-right">Value (Net)</th>
-                                <th class="px-6 py-3 text-right">PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for asset in portfolio.holdings %}
-                            <tr class="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
-                                <td class="px-6 py-4 font-bold text-white">{{ asset.symbol }}</td>
-                                <td class="px-6 py-4 text-right">{{ asset.quantity|stringformat:".8f" }}</td>
-                                <td class="px-6 py-4 text-right">${{ asset.avg_price|stringformat:".2f" }}</td>
-                                <td class="px-6 py-4 text-right text-gray-300">$
-                                    {{ asset.current_price|stringformat:".2f" }}
-                                </td>
-                                <td class="px-6 py-4 text-right text-red-400">${{ asset.fees|stringformat:".4f" }}</td>
-                                <td class="px-6 py-4 text-right font-medium text-white">$
-                                    {{ asset.current_value|stringformat:".2f" }}</td>
-                                <td
-                                    class="px-6 py-4 text-right font-medium {% if asset.pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                                    {{ asset.pnl|stringformat:".2f" }} <span class="text-xs opacity-75">(
-                                        {{ asset.pnl_percent|stringformat:".2f" }}%)</span>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="7" class="px-6 py-8 text-center text-gray-500">No holdings yet.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Right Column (Accounts & Trades) -->
-        <div class="space-y-8">
-
-            <!-- Exchange Accounts -->
-            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-white">Exchange Accounts</h3>
-                    <a href="{% url 'account_create' %}"
-                        class="text-blue-400 hover:text-blue-300 text-xs uppercase font-bold text-sm">+ Add</a>
-                </div>
-                <div class="p-0">
-                    {% if accounts %}
-                    <ul class="divide-y divide-gray-700">
-                        {% for account in accounts %}
-                        <li class="p-4 flex justify-between items-center hover:bg-gray-700/50 transition-colors">
-                            <div class="flex items-center space-x-3">
-                                <div
-                                    class="w-2 h-2 rounded-full {% if account.is_active and account.exchange.is_enabled %}bg-green-500{% else %}bg-red-500{% endif %}">
-                                </div>
-                                <div>
-                                    <a href="{% url 'account_edit' pk=account.pk %}"
-                                        class="font-medium text-white hover:text-blue-400 block">{{ account }}</a>
-                                    <span class="text-xs text-gray-500">{{ account.exchange.name }}</span>
-                                </div>
-                            </div>
-                            {% include 'core/partials/account_toggle_button.html' with account=account %}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% else %}
-                    <div class="p-6 text-center text-gray-500">
-                        No accounts. <a href="{% url 'account_create' %}" class="text-blue-400 hover:underline">Connect
-                            one</a>.
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- Recent Trades -->
-            <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-white">Recent Trades</h3>
-                    <a href="{% url 'trade_list' %}"
-                        class="text-blue-400 hover:text-blue-300 text-xs font-bold uppercase tracking-wide">View All</a>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left text-gray-400">
-                        <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
-                            <tr>
-                                <th class="px-4 py-3">Time</th>
-                                <th class="px-4 py-3">Pair</th>
-                                <th class="px-4 py-3 text-right">Amt</th>
-                                <th class="px-4 py-3 text-right">Price</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for trade in recent_trades %}
-                            <tr class="border-b border-gray-700 hover:bg-gray-700/50">
-                                <td class="px-4 py-3">
-                                    <span class="local-datetime text-xs whitespace-nowrap"
-                                        data-utc="{{ trade.timestamp|date:'c' }}">
-                                        {{ trade.timestamp|date:"M d H:i" }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 font-medium text-white">{{ trade.symbol }}</td>
-                                <td class="px-4 py-3 text-right">{{ trade.amount_received|stringformat:".4f" }}</td>
-                                <td class="px-4 py-3 text-right">${{ trade.purchase_price|stringformat:".2f" }}</td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="4" class="px-6 py-8 text-center text-gray-500">No trades yet.</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </div>
+    <!-- Live Container -->
+    <div id="dashboard-live-container" class="space-y-8">
+        {% include 'core/partials/dashboard_live_content.html' %}
     </div>
 </div>
 
 <script>
+    let autoRefreshTimer = null;
+    let countdownIntervalTimer = null;
+    let scheduledTradeTimer = null;
+    let nextRefreshTimestamp = null;
+
+    function triggerDashboardRefresh() {
+        const select = document.getElementById('auto-refresh-select');
+        const intervalMs = select ? parseInt(select.value, 10) : 300000;
+        if (intervalMs > 0) {
+            nextRefreshTimestamp = Date.now() + intervalMs;
+        }
+        htmx.ajax('GET', "{% url 'dashboard' %}", {
+            target: '#dashboard-live-container',
+            swap: 'innerHTML',
+            indicator: '#refresh-spinner'
+        });
+    }
+
+    function formatCountdown(ms) {
+        if (ms <= 0) return '0s';
+        const totalSec = Math.floor(ms / 1000);
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        if (mins > 0) {
+            return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+        }
+        return `${secs}s`;
+    }
+
+    function updateCountdownDisplay() {
+        const countdownEl = document.getElementById('refresh-countdown');
+        if (!countdownEl) return;
+
+        const select = document.getElementById('auto-refresh-select');
+        const intervalMs = select ? parseInt(select.value, 10) : 0;
+
+        if (intervalMs === 0) {
+            countdownEl.textContent = '(Paused)';
+            countdownEl.className = 'font-mono text-gray-500 text-xs ml-2';
+            return;
+        }
+
+        if (!nextRefreshTimestamp) {
+            nextRefreshTimestamp = Date.now() + intervalMs;
+        }
+
+        const remainingMs = Math.max(0, nextRefreshTimestamp - Date.now());
+        countdownEl.textContent = `(${formatCountdown(remainingMs)})`;
+        countdownEl.className = 'font-mono text-gray-400 text-xs ml-2';
+    }
+
+    function updateAutoRefreshSchedule() {
+        const select = document.getElementById('auto-refresh-select');
+        const pulseDot = document.getElementById('refresh-pulse-dot');
+        if (!select) return;
+
+        const intervalMs = parseInt(select.value, 10);
+        localStorage.setItem('moondrip_dashboard_refresh_interval', intervalMs.toString());
+
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+
+        if (intervalMs > 0) {
+            if (pulseDot) pulseDot.classList.remove('hidden');
+            nextRefreshTimestamp = Date.now() + intervalMs;
+            autoRefreshTimer = setInterval(() => {
+                triggerDashboardRefresh();
+            }, intervalMs);
+        } else {
+            if (pulseDot) pulseDot.classList.add('hidden');
+            nextRefreshTimestamp = null;
+        }
+        updateCountdownDisplay();
+    }
+
+    function planScheduledTradeRefresh() {
+        if (scheduledTradeTimer) {
+            clearTimeout(scheduledTradeTimer);
+            scheduledTradeTimer = null;
+        }
+
+        const jobElements = document.querySelectorAll('[data-next-run]');
+        let earliestTime = null;
+        const now = Date.now();
+
+        jobElements.forEach(el => {
+            const isoTime = el.getAttribute('data-next-run');
+            if (isoTime) {
+                const timeMs = new Date(isoTime).getTime();
+                if (timeMs > now) {
+                    if (earliestTime === null || timeMs < earliestTime) {
+                        earliestTime = timeMs;
+                    }
+                }
+            }
+        });
+
+        if (earliestTime !== null) {
+            // Buffer to allow the scheduler worker to place orders and receive exchange confirmations (approx 5-6s)
+            const delayMs = Math.max(1000, (earliestTime - now) + 6000);
+            if (delayMs < 86400000) { // Schedule if within 24 hours
+                scheduledTradeTimer = setTimeout(() => {
+                    triggerDashboardRefresh();
+                    // Follow-up refresh 6s later to catch multi-token baskets with multiple exchange roundtrips
+                    setTimeout(triggerDashboardRefresh, 6000);
+                }, delayMs);
+            }
+        }
+    }
+
     function updateLocalTimes() {
         const dateElements = document.querySelectorAll('.local-datetime');
         dateElements.forEach(el => {
@@ -225,7 +178,55 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', updateLocalTimes);
-    document.body.addEventListener('htmx:afterSwap', updateLocalTimes);
+    function initDashboard() {
+        const select = document.getElementById('auto-refresh-select');
+        if (select) {
+            const saved = localStorage.getItem('moondrip_dashboard_refresh_interval');
+            if (saved !== null && ['30000', '60000', '300000', '600000', '1800000', '0'].includes(saved)) {
+                select.value = saved;
+            } else {
+                select.value = '300000'; // Default 5 minutes
+            }
+            select.addEventListener('change', updateAutoRefreshSchedule);
+            updateAutoRefreshSchedule();
+        }
+
+        if (countdownIntervalTimer) {
+            clearInterval(countdownIntervalTimer);
+        }
+        countdownIntervalTimer = setInterval(updateCountdownDisplay, 1000);
+        updateCountdownDisplay();
+
+        updateLocalTimes();
+        planScheduledTradeRefresh();
+    }
+
+    window.handlePauseJobClick = function(btn) {
+        btn.classList.add('pointer-events-none', 'opacity-75');
+        const spinner = btn.querySelector('.pause-spinner');
+        const text = btn.querySelector('.pause-text');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.textContent = 'Pausing...';
+    };
+
+    window.handleResumeJobConfirm = function(btn, jobPk) {
+        const cancelBtn = document.getElementById('resume-cancel-btn-' + jobPk);
+        if (cancelBtn) {
+            cancelBtn.disabled = true;
+            cancelBtn.classList.add('pointer-events-none', 'cursor-not-allowed', 'opacity-40');
+        }
+        btn.disabled = true;
+        btn.classList.add('pointer-events-none', 'cursor-not-allowed', 'opacity-80');
+        const spinner = btn.querySelector('.resume-spinner');
+        const text = btn.querySelector('.resume-text');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.textContent = 'Resuming...';
+    };
+
+    document.addEventListener('DOMContentLoaded', initDashboard);
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        updateLocalTimes();
+        planScheduledTradeRefresh();
+    });
 </script>
 {% endblock %}

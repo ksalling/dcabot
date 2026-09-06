@@ -15,6 +15,7 @@ urlpatterns = [
     path('trades/export/', views.export_trades_csv, name='trade_export'),
     path('jobs/<int:pk>/clear-alert/', views.JobClearAlertView.as_view(), name='job_clear_alert'),
     path('accounts/add/', views.AccountCreateView.as_view(), name='account_create'),
+    path('accounts/<int:pk>/pairs/', views.AccountPairsView.as_view(), name='account_pairs'),
     path('accounts/<int:pk>/toggle/', views.AccountToggleView.as_view(), name='account_toggle'),
     path('accounts/<int:pk>/edit/', views.AccountUpdateView.as_view(), name='account_edit'),
     path('accounts/<int:pk>/delete/', views.AccountDeleteView.as_view(), name='account_delete'),

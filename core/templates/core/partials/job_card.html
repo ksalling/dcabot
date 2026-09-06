@@ -1,6 +1,6 @@
 <div class="bg-gray-700 rounded-lg p-6 relative border-l-4 shadow-md mb-6 
     {% if job.last_status == 'failure' %}border-red-500
-    {% elif job.last_status == 'warning' %}border-yellow-500
+    {% elif not job.is_active or job.last_status == 'warning' %}border-yellow-500
     {% else %}border-green-500{% endif %}" id="job-card-{{ job.pk }}">
 
     <!-- Job Header -->
@@ -9,7 +9,7 @@
             <h3 class="font-bold text-xl text-white flex items-center gap-2">
                 <a href="{% url 'job_edit' pk=job.pk %}" class="hover:underline">{{ job.name }}</a>
                 {% if not job.is_active %}
-                <span class="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full">Paused</span>
+                <span class="text-xs bg-yellow-900/60 text-yellow-300 border border-yellow-700/60 px-2 py-0.5 rounded-full font-medium">Paused</span>
                 {% endif %}
             </h3>
             <p class="text-sm text-gray-400 mt-1">{{ job.get_interval_display }} • <span
@@ -48,12 +48,22 @@
     <div
         class="bg-gray-800/50 p-3 rounded-md mb-4 text-sm flex justify-between items-start border
         {% if job.last_status == 'failure' %}border-red-900/50 text-red-300{% else %}border-yellow-900/50 text-yellow-300{% endif %}">
-        <span class="flex-1 mr-2">
+        <div class="flex-1 mr-2">
             <strong class="uppercase text-[10px] tracking-wider opacity-75 block mb-1">
                 {% if job.last_status == 'failure' %}Critical Error{% else %}Warning{% endif %}
             </strong>
-            {{ job.last_error_message }}
-        </span>
+            <p class="text-xs leading-relaxed">{{ job.last_error_message|truncatechars:110 }}</p>
+            
+            {% if job.last_status == 'failure' %}
+            <button type="button" onclick="document.getElementById('jobErrorModal-{{ job.pk }}').classList.remove('hidden')"
+                class="text-xs text-red-400 hover:text-red-300 underline font-semibold flex items-center gap-1 mt-1.5 cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>View Error Details</span>
+            </button>
+            {% endif %}
+        </div>
 
         <button hx-post="{% url 'job_clear_alert' pk=job.pk %}" hx-swap="outerHTML" hx-target="#job-card-{{ job.pk }}"
             class="text-gray-500 hover:text-white transition-colors p-1 hover:bg-gray-700/50 rounded"
@@ -64,11 +74,67 @@
             </svg>
         </button>
     </div>
+
+    <!-- Error Details Modal -->
+    {% if job.last_status == 'failure' %}
+    <div id="jobErrorModal-{{ job.pk }}" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-left">
+            <div class="flex items-start justify-between border-b border-gray-700 pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">⚠️</span>
+                    <h3 class="text-lg font-bold text-white">Execution Error: {{ job.name }}</h3>
+                </div>
+                <button type="button" onclick="document.getElementById('jobErrorModal-{{ job.pk }}').classList.add('hidden')"
+                    class="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700 transition cursor-pointer">
+                    ✕
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-red-400 mb-1">Error Details</h4>
+                    <div class="bg-red-950/60 border border-red-800/80 rounded-lg p-3 text-sm text-red-200 font-mono break-words">
+                        {{ job.last_error_message }}
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Troubleshooting Recommendations</h4>
+                    <ul class="text-xs text-gray-300 space-y-2 list-disc list-inside bg-gray-900/80 p-3 rounded-lg border border-gray-700">
+                        <li>Ensure your <strong>{{ job.account.exchange.name }}</strong> account has sufficient <strong>{{ job.quote_currency }}</strong> free balance.</li>
+                        <li>Verify your API Key has active Spot/Trading permissions enabled.</li>
+                        <li>Check that the dollar allocation meets the minimum trade size on the exchange.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-3 border-t border-gray-700">
+                <button hx-post="{% url 'job_clear_alert' pk=job.pk %}" 
+                        hx-swap="outerHTML" 
+                        hx-target="#job-card-{{ job.pk }}"
+                        onclick="document.getElementById('jobErrorModal-{{ job.pk }}').classList.add('hidden')"
+                        class="text-xs text-gray-400 hover:text-white underline cursor-pointer">
+                    Dismiss Alert
+                </button>
+
+                <div class="flex gap-2">
+                    <a href="{% url 'job_edit' pk=job.pk %}" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold transition">
+                        Edit Job
+                    </a>
+                    <button type="button" onclick="document.getElementById('jobErrorModal-{{ job.pk }}').classList.add('hidden')"
+                        class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-xs font-medium transition cursor-pointer">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- Footer / Actions -->
     <div class="flex flex-wrap items-center justify-between pt-4 border-t border-gray-600/30 mt-2">
-        <div class="text-sm text-gray-400 font-mono">
+        <div class="text-sm text-gray-400 font-mono" {% if job.is_active and job.next_run %}data-next-run="{{ job.next_run|date:'c' }}"{% endif %}>
             {% if job.next_run %}
             <span class="text-gray-500 mr-2">Next:</span>
             <span class="local-datetime text-gray-300" data-utc="{{ job.next_run|date:'c' }}">
@@ -80,31 +146,153 @@
         </div>
 
         <div class="flex items-center gap-3">
-            <!-- Toggle Button (HTMX) -->
-            <button hx-post="{% url 'job_toggle' pk=job.pk %}" hx-target="#job-card-{{ job.pk }}" hx-swap="outerHTML"
-                class="px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all duration-200 border
-                    {% if job.is_active %}
-                        bg-transparent border-gray-500 text-gray-300 hover:bg-gray-600 hover:text-white
-                    {% else %}
-                        bg-blue-600 border-blue-600 text-white hover:bg-blue-500 hover:border-blue-500 shadow-lg shadow-blue-900/20
-                    {% endif %}">
-                {% if job.is_active %}Pause{% else %}Resume Job{% endif %}
+            {% if job.is_active %}
+            <!-- Pause Button with Loading Indicator -->
+            <button type="button"
+                    hx-post="{% url 'job_toggle' pk=job.pk %}" 
+                    hx-target="#job-card-{{ job.pk }}" 
+                    hx-swap="outerHTML"
+                    hx-disabled-elt="this"
+                    class="px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer bg-transparent border-gray-500 text-gray-300 hover:bg-gray-600 hover:text-white flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:pointer-events-none disabled:cursor-not-allowed">
+                <svg class="animate-spin -ml-1 mr-1.5 h-3.5 w-3.5 text-gray-300 hidden htmx-spinner-show" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="htmx-text-default">Pause</span>
+                <span class="hidden htmx-text-loading">Updating...</span>
             </button>
+            {% else %}
+            <!-- Resume Trigger Button (Opens Confirmation Modal) -->
+            <button type="button"
+                    onclick="document.getElementById('resumeJobModal-{{ job.pk }}').classList.remove('hidden')"
+                    class="px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer bg-blue-600 border-blue-600 text-white hover:bg-blue-500 hover:border-blue-500 shadow-lg shadow-blue-900/20">
+                Resume Job
+            </button>
+            {% endif %}
 
-            <!-- Run Now (Form) -->
-            <form action="{% url 'job_run' pk=job.pk %}" method="post" class="inline">
-                {% csrf_token %}
-                <button type="submit" title="Execute immediately"
-                    class="p-2 rounded text-gray-400 hover:text-white hover:bg-gray-600 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </button>
-            </form>
+            <!-- Immediate Execution Trigger Button (Opens Confirmation Modal) -->
+            <button type="button" 
+                    onclick="document.getElementById('runJobModal-{{ job.pk }}').classList.remove('hidden')"
+                    title="Execute trade immediately"
+                    class="p-2 rounded text-gray-400 hover:text-white hover:bg-gray-600 transition-colors cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </button>
         </div>
     </div>
+
+    <!-- Immediate Execution Confirmation Modal -->
+    <div id="runJobModal-{{ job.pk }}" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 text-left">
+            <div class="flex items-start gap-3">
+                <div class="p-2 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-700/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-white">Execute Immediate Trade?</h3>
+                    <p class="text-sm text-gray-300 mt-1">
+                        Are you sure you want to execute an immediate order for <strong>{{ job.name }}</strong>?
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-gray-900/80 rounded-lg p-3 border border-gray-700 text-xs space-y-1.5">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Order Amount:</span>
+                    <span class="text-white font-semibold">{{ job.total_amount }} {{ job.quote_currency }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Exchange Account:</span>
+                    <span class="text-gray-200">{{ job.account.exchange.name }} ({{ job.account.nickname }})</span>
+                </div>
+                <div class="flex justify-between border-t border-gray-800 pt-1.5">
+                    <span class="text-gray-400">Allocations:</span>
+                    <span class="text-blue-400 font-medium">
+                        {% for token in job.tokens.all %}
+                        {{ token.percentage|stringformat:".0f" }}% {{ token.token_symbol }}{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                    </span>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row justify-end gap-2.5 pt-3 border-t border-gray-700">
+                <button type="button" 
+                        id="run-cancel-btn-{{ job.pk }}"
+                        onclick="document.getElementById('runJobModal-{{ job.pk }}').classList.add('hidden')"
+                        class="px-4 py-2 rounded text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:cursor-not-allowed">
+                    Cancel
+                </button>
+                <form action="{% url 'job_run' pk=job.pk %}" method="post" class="inline"
+                      hx-post="{% url 'job_run' pk=job.pk %}"
+                      hx-target="#dashboard-live-container"
+                      hx-swap="innerHTML"
+                      hx-indicator="#refresh-spinner"
+                      hx-disabled-elt="#runJobModal-{{ job.pk }} button, this">
+                    {% csrf_token %}
+                    <button type="submit"
+                            id="run-confirm-btn-{{ job.pk }}"
+                            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-900/30 disabled:opacity-60 disabled:pointer-events-none disabled:cursor-not-allowed">
+                        <svg class="animate-spin -ml-1 mr-1.5 h-4 w-4 text-white hidden htmx-spinner-show" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="htmx-text-default">Confirm & Execute Now</span>
+                        <span class="hidden htmx-text-loading">Updating...</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resume Confirmation Modal -->
+    {% if not job.is_active %}
+    <div id="resumeJobModal-{{ job.pk }}" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 text-left">
+            <div class="flex items-start gap-3">
+                <div class="p-2 rounded-full bg-blue-900/50 text-blue-400 border border-blue-700/50">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-white">Resume Job: {{ job.name }}?</h3>
+                    <p class="text-sm text-gray-300 mt-1">
+                        Are you sure you want to resume automated DCA buys for <strong>{{ job.name }}</strong>? 
+                        Moondrip will validate exchange funds and resume scheduled recurring executions.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row justify-end gap-2.5 pt-3 border-t border-gray-700">
+                <button type="button" 
+                        id="resume-cancel-btn-{{ job.pk }}"
+                        onclick="document.getElementById('resumeJobModal-{{ job.pk }}').classList.add('hidden')"
+                        class="px-4 py-2 rounded text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:cursor-not-allowed">
+                    Cancel
+                </button>
+                <button type="button"
+                        id="resume-confirm-btn-{{ job.pk }}"
+                        hx-post="{% url 'job_toggle' pk=job.pk %}"
+                        hx-target="#job-card-{{ job.pk }}"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="#resumeJobModal-{{ job.pk }} button"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-blue-900/30 disabled:opacity-60 disabled:pointer-events-none disabled:cursor-not-allowed">
+                    <svg class="animate-spin -ml-1 mr-1.5 h-4 w-4 text-white hidden htmx-spinner-show" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="htmx-text-default">Confirm & Resume</span>
+                    <span class="hidden htmx-text-loading">Updating...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>

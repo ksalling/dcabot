@@ -8,9 +8,32 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
-        /* Custom scrollbar or other global styles */
         body {
             font-family: 'Inter', sans-serif;
+        }
+        .alert-banner {
+            transition: opacity 0.4s ease, transform 0.4s ease, margin 0.4s ease, max-height 0.4s ease;
+            max-height: 200px;
+            overflow: hidden;
+        }
+        .alert-banner.banner-fading {
+            opacity: 0;
+            transform: translateY(-6px);
+            max-height: 0;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        .htmx-request .htmx-spinner-show,
+        .htmx-request.htmx-spinner-show {
+            display: inline-block !important;
+        }
+        .htmx-request .htmx-text-default {
+            display: none !important;
+        }
+        .htmx-request .htmx-text-loading {
+            display: inline !important;
         }
     </style>
 </head>
@@ -60,11 +83,22 @@
 
     <main class="container mx-auto p-4 flex-grow">
         {% if messages %}
-        <div class="mb-4">
+        <div id="flash-messages-container" class="mb-4 space-y-2">
             {% for message in messages %}
             <div
-                class="p-3 rounded mb-2 {% if message.tags == 'error' %}bg-red-900 text-red-200{% else %}bg-green-900 text-green-200{% endif %}">
-                {{ message }}
+                class="alert-banner p-3.5 rounded-lg flex items-start justify-between shadow-lg border {% if message.tags == 'error' %}bg-red-950/90 text-red-200 border-red-800/80{% elif message.tags == 'warning' %}bg-yellow-950/90 text-yellow-200 border-yellow-800/80{% else %}bg-green-950/90 text-green-200 border-green-800/80{% endif %}"
+                {% if message.tags != 'error' and message.tags != 'warning' %}data-autodismiss="30000"{% endif %}>
+                <div class="flex items-center gap-2.5 flex-1 mr-2">
+                    <span class="text-base">
+                        {% if message.tags == 'error' %}⛔{% elif message.tags == 'warning' %}⚠️{% else %}✓{% endif %}
+                    </span>
+                    <span class="text-sm font-medium leading-relaxed">{{ message }}</span>
+                </div>
+                <button type="button" onclick="dismissBanner(this)"
+                    class="text-gray-400 hover:text-white p-1 rounded hover:bg-white/10 transition-colors cursor-pointer text-xs font-bold leading-none"
+                    title="Dismiss message">
+                    ✕
+                </button>
             </div>
             {% endfor %}
         </div>
@@ -76,10 +110,36 @@
     <footer class="bg-gray-800 border-t border-gray-700 p-4 text-center text-gray-500 text-sm">
         &copy; 2024 Moondrip
     </footer>
+
     <script>
         document.body.addEventListener('htmx:configRequest', (event) => {
             event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
         });
+
+        function dismissBanner(buttonOrElement) {
+            const banner = buttonOrElement.classList.contains('alert-banner') 
+                ? buttonOrElement 
+                : buttonOrElement.closest('.alert-banner');
+            if (banner) {
+                banner.classList.add('banner-fading');
+                setTimeout(() => banner.remove(), 400);
+            }
+        }
+
+        function initAlertBanners() {
+            const autoDismissBanners = document.querySelectorAll('.alert-banner[data-autodismiss]');
+            autoDismissBanners.forEach(banner => {
+                if (!banner.dataset.timerStarted) {
+                    banner.dataset.timerStarted = "true";
+                    const delay = parseInt(banner.getAttribute('data-autodismiss'), 10) || 30000;
+                    setTimeout(() => {
+                        dismissBanner(banner);
+                    }, delay);
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initAlertBanners);
     </script>
 </body>
 

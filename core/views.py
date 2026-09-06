@@ -1,18 +1,10 @@
 import ccxt
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
-from django.urls import reverse_lazy, reverse
-from django.http import HttpResponse
-from django.contrib import messages
-from django.contrib.auth import login
-from django.contrib.auth.decorators import login_required
-from django.utils.decorators import method_decorator
-from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, View, RedirectView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView, TemplateView, RedirectView
 from django.urls import reverse_lazy, reverse
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -20,7 +12,7 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from .models import AutobuyJob, ExchangeAccount, JobLog, Trade, JobToken, SupportedExchange, AppSettings
-from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm, AppSettingsForm, EmailUserCreationForm
+from .forms import AutobuyJobForm, ExchangeAccountForm, UserProfileForm, ExchangeAccountEditForm, AppSettingsForm, EmailUserCreationForm, JobTokenForm
 from django.forms import inlineformset_factory
 from django.contrib.auth.views import PasswordChangeView
 
@@ -45,25 +37,54 @@ class CustomPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
         messages.success(self.request, "Password changed successfully.")
         return super().form_valid(form)
 
+def get_dashboard_context(user):
+    from .services.portfolio import PortfolioService
+    
+    # Portfolio Calculation
+    portfolio_service = PortfolioService(user)
+    portfolio_data = portfolio_service.get_portfolio_summary()
+
+    # Data Fetching
+    jobs = AutobuyJob.objects.filter(user=user).order_by('-created_at')
+    accounts = ExchangeAccount.objects.filter(user=user)
+    recent_trades_qs = Trade.objects.filter(user=user).order_by('-timestamp')[:10] # Show 10
+    
+    price_map = {h['symbol']: h['current_price'] for h in portfolio_data.get('holdings', [])}
+    
+    recent_trades = []
+    for trade in recent_trades_qs:
+        quote_currency = trade.symbol.split('/')[1] if '/' in trade.symbol else 'USD'
+        current_price = price_map.get(trade.symbol, trade.purchase_price)
+        current_value = (trade.amount_received * current_price) if current_price else trade.amount_spent
+        pnl = current_value - trade.amount_spent - trade.fee_incurred
+        pnl_percent = (pnl / trade.amount_spent) * 100 if trade.amount_spent > 0 else 0
+        
+        recent_trades.append({
+            'id': trade.id,
+            'timestamp': trade.timestamp,
+            'symbol': trade.symbol,
+            'quote_currency': quote_currency,
+            'purchase_price': trade.purchase_price,
+            'amount_received': trade.amount_received,
+            'amount_spent': trade.amount_spent,
+            'current_price': current_price,
+            'current_value': current_value,
+            'pnl': pnl,
+            'pnl_percent': pnl_percent,
+        })
+    
+    return {
+        'jobs': jobs,
+        'accounts': accounts,
+        'recent_trades': recent_trades,
+        'portfolio': portfolio_data
+    }
+
 class DashboardView(LoginRequiredMixin, View):
     def get(self, request):
-        from .services.portfolio import PortfolioService
-        
-        # Data Fetching
-        jobs = AutobuyJob.objects.filter(user=request.user).order_by('-created_at')
-        accounts = ExchangeAccount.objects.filter(user=request.user)
-        recent_trades = Trade.objects.filter(user=request.user).order_by('-timestamp')[:10] # Show 10
-        
-        # Portfolio Calculation
-        portfolio_service = PortfolioService(request.user)
-        portfolio_data = portfolio_service.get_portfolio_summary()
-        
-        context = {
-            'jobs': jobs,
-            'accounts': accounts,
-            'recent_trades': recent_trades,
-            'portfolio': portfolio_data
-        }
+        context = get_dashboard_context(request.user)
+        if request.headers.get('HX-Request'):
+            return render(request, 'core/partials/dashboard_live_content.html', context)
         return render(request, 'core/dashboard.html', context)
 
 class JobCreateView(LoginRequiredMixin, CreateView):
@@ -79,7 +100,7 @@ class JobCreateView(LoginRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        JobTokenFormSet = inlineformset_factory(AutobuyJob, JobToken, fields=('token_symbol', 'percentage'), extra=1, can_delete=False)
+        JobTokenFormSet = inlineformset_factory(AutobuyJob, JobToken, form=JobTokenForm, fields=('token_symbol', 'percentage'), extra=1, can_delete=False)
         if self.request.POST:
             data['tokens'] = JobTokenFormSet(self.request.POST)
         else:
@@ -105,6 +126,8 @@ class JobCreateView(LoginRequiredMixin, CreateView):
         context = self.get_context_data()
         tokens = context['tokens']
         if form.is_valid() and tokens.is_valid():
+            validation_errors = []
+
             # 1. Validate Total Percentage = 100%
             total_percentage = 0
             for token_form in tokens:
@@ -112,15 +135,12 @@ class JobCreateView(LoginRequiredMixin, CreateView):
                     total_percentage += token_form.cleaned_data.get('percentage', 0)
             
             if total_percentage != 100:
-                messages.error(self.request, f"Total percentage must be 100%. Current total: {total_percentage}%")
-                return self.render_to_response(self.get_context_data(form=form))
+                validation_errors.append(f"Total percentage must be 100%. Current total: {total_percentage}%.")
 
             # 2. Exchange Validation
             self.object = form.save(commit=False)
             self.object.user = self.request.user
             self.object.is_active = True # Active by default on create
-            # We need to save object first? OR use instance?
-            # ModelForm save(commit=False) gives us an instance.
             
             from .services.exchange_service import ExchangeService
             service = ExchangeService(self.object.account)
@@ -132,33 +152,37 @@ class JobCreateView(LoginRequiredMixin, CreateView):
                 self.object.last_error_message = msg
                 messages.warning(self.request, f"Warning: {msg} The job has been created but may fail if funds are not added.")
             else:
-                self.object.last_status = 'success' # Or clear it?
+                self.object.last_status = 'success'
                 self.object.last_error_message = ''
             
-            # Check Pairs (Hard Validation)
+            # Check All Pairs & Minimum Order Sizes (Hard Validation)
             for token_form in tokens:
-                 if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
-                     symbol = token_form.cleaned_data.get('token_symbol')
-                     if '/' in symbol:
-                         base, quote = symbol.split('/')
-                         if quote != self.object.quote_currency:
-                              messages.error(self.request, f"Token {symbol} quote currency ({quote}) does not match job quote currency ({self.object.quote_currency}).")
-                              return self.render_to_response(self.get_context_data(form=form))
-                     else:
-                         base = symbol
-                     
-                     is_valid, pair_msg = service.validate_pair(base, self.object.quote_currency)
-                     if not is_valid:
-                         messages.error(self.request, pair_msg)
-                         return self.render_to_response(self.get_context_data(form=form))
+                if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
+                    raw_symbol = token_form.cleaned_data.get('token_symbol')
+                    if not raw_symbol:
+                        validation_errors.append("Token symbol cannot be empty.")
+                        continue
+                        
+                    is_valid, std_symbol, pair_msg = service.validate_pair(raw_symbol, self.object.quote_currency)
+                    if not is_valid:
+                        validation_errors.append(pair_msg)
+                    else:
+                        token_form.instance.token_symbol = std_symbol
+                        # Validate Minimum Order Size
+                        percentage = float(token_form.cleaned_data.get('percentage', 0))
+                        allocation = (percentage / 100.0) * float(self.object.total_amount)
+                        is_valid_size, size_err = service.validate_order_size(std_symbol, allocation, self.object.quote_currency)
+                        if not is_valid_size:
+                            validation_errors.append(size_err)
+
+            if validation_errors:
+                for err in validation_errors:
+                    messages.error(self.request, err)
+                return self.render_to_response(self.get_context_data(form=form))
 
             self.object = form.save(commit=False)
             self.object.is_active = True
-            
-            # Initialize next_run to start_time so scheduler picks it up
-            if not self.object.next_run:
-                self.object.next_run = self.object.start_time
-                
+            self.object.next_run = self.object.calculate_next_run()
             self.object.save()
             tokens.instance = self.object
             tokens.save()
@@ -244,12 +268,9 @@ class JobToggleView(LoginRequiredMixin, View):
                 # Only activate if funds are okay
                 job.is_active = True
                 
-                # If next_run is missing (e.g. from legacy or error), set it to now to resume immediately
-                # or start_time if it's in the future? 
-                # Simplest is: if no next_run, set to now.
-                if not job.next_run:
-                    from django.utils import timezone
-                    job.next_run = timezone.now()
+                from django.utils import timezone
+                if not job.next_run or job.next_run <= timezone.now():
+                    job.next_run = job.calculate_next_run()
                     
                 job.save()
         else:
@@ -291,6 +312,9 @@ class JobRunNowView(LoginRequiredMixin, View):
         executor = TradeExecutor()
         executor.execute_job(job.pk)
         messages.success(request, f"Job {job.name} triggered manually.")
+        if request.headers.get('HX-Request'):
+            context = get_dashboard_context(request.user)
+            return render(request, 'core/partials/dashboard_live_content.html', context)
         return redirect('dashboard')
 
 class ManageExchangesView(LoginRequiredMixin, View):
@@ -376,7 +400,7 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
-        JobTokenFormSet = inlineformset_factory(AutobuyJob, JobToken, fields=('token_symbol', 'percentage'), extra=0, can_delete=True)
+        JobTokenFormSet = inlineformset_factory(AutobuyJob, JobToken, form=JobTokenForm, fields=('token_symbol', 'percentage'), extra=0, can_delete=True)
         if self.request.POST:
             data['tokens'] = JobTokenFormSet(self.request.POST, instance=self.object)
         else:
@@ -388,6 +412,8 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
         tokens = context['tokens']
         
         if form.is_valid() and tokens.is_valid():
+            validation_errors = []
+
             # 1. Validate Total Percentage = 100%
             total_percentage = 0
             for token_form in tokens:
@@ -395,8 +421,7 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
                     total_percentage += token_form.cleaned_data.get('percentage', 0)
             
             if total_percentage != 100:
-                messages.error(self.request, f"Total percentage must be 100%. Current total: {total_percentage}%")
-                return self.render_to_response(self.get_context_data(form=form))
+                validation_errors.append(f"Total percentage must be 100%. Current total: {total_percentage}%.")
 
             # 2. Exchange Validation
             job = form.save(commit=False)
@@ -413,39 +438,48 @@ class JobUpdateView(LoginRequiredMixin, UpdateView):
                 job.last_status = 'success'
                 job.last_error_message = ''
             
-            # Check Pairs (Hard Validation)
+            # Check All Pairs & Minimum Order Sizes (Hard Validation)
             for token_form in tokens:
-                 if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
-                     symbol = token_form.cleaned_data.get('token_symbol')
-                     if '/' in symbol:
-                         base, quote = symbol.split('/')
-                         if quote != job.quote_currency:
-                              messages.error(self.request, f"Token {symbol} quote currency ({quote}) does not match job quote currency ({job.quote_currency}).")
-                              return self.render_to_response(self.get_context_data(form=form))
-                     else:
-                         base = symbol
-                     
-                     is_valid, pair_msg = service.validate_pair(base, job.quote_currency)
-                     if not is_valid:
-                         messages.error(self.request, pair_msg)
-                         return self.render_to_response(self.get_context_data(form=form))
+                if token_form.cleaned_data and not token_form.cleaned_data.get('DELETE', False):
+                    raw_symbol = token_form.cleaned_data.get('token_symbol')
+                    if not raw_symbol:
+                        validation_errors.append("Token symbol cannot be empty.")
+                        continue
+
+                    is_valid, std_symbol, pair_msg = service.validate_pair(raw_symbol, job.quote_currency)
+                    if not is_valid:
+                        validation_errors.append(pair_msg)
+                    else:
+                        token_form.instance.token_symbol = std_symbol
+                        # Validate Minimum Order Size
+                        percentage = float(token_form.cleaned_data.get('percentage', 0))
+                        allocation = (percentage / 100.0) * float(job.total_amount)
+                        is_valid_size, size_err = service.validate_order_size(std_symbol, allocation, job.quote_currency)
+                        if not is_valid_size:
+                            validation_errors.append(size_err)
+
+            if validation_errors:
+                for err in validation_errors:
+                    messages.error(self.request, err)
+                return self.render_to_response(self.get_context_data(form=form))
 
             self.object = form.save(commit=False)
             
-            # If start_time was changed, reset the schedule
-            if 'start_time' in form.changed_data:
-                 self.object.next_run = self.object.start_time
-            # Ensure next_run is set if missing (legacy)
-            elif not self.object.next_run:
-                 self.object.next_run = self.object.start_time
-            self.object.is_active = True
+            # Check action_active from paused modal
+            action_active = self.request.POST.get('action_active')
+            if action_active == 'enable':
+                self.object.is_active = True
+            elif action_active == 'keep_paused':
+                self.object.is_active = False
+            
+            # Recalculate next_run based on start_time and interval so it always points to the next scheduled future occurrence
+            self.object.next_run = self.object.calculate_next_run()
             self.object.save()
             tokens.instance = self.object
             tokens.save()
             
-            # Only show success message if no higher priority message (like error) - but we return early on error.
-            # Warning persists.
-            messages.success(self.request, "Job updated successfully!")
+            status_note = " and resumed" if action_active == 'enable' else (" (remains paused)" if action_active == 'keep_paused' else "")
+            messages.success(self.request, f"Job updated successfully{status_note}!")
             return redirect(self.success_url)
         else:
             return self.render_to_response(self.get_context_data(form=form))
@@ -538,12 +572,17 @@ class TradeListView(LoginRequiredMixin, ListView):
     paginate_by = 50
     
     def get_queryset(self):
+        from django.db.models import Q
         queryset = Trade.objects.filter(user=self.request.user)
         
+        # Job Filter
+        job_filter = self.request.GET.get('job', '').strip()
+        if job_filter:
+            queryset = queryset.filter(Q(job_name=job_filter) | Q(job__name=job_filter))
+
         # Search
-        search_query = self.request.GET.get('search', '')
+        search_query = self.request.GET.get('search', '').strip()
         if search_query:
-            from django.db.models import Q
             queryset = queryset.filter(
                 Q(job_name__icontains=search_query) |
                 Q(exchange_name__icontains=search_query) |
@@ -565,15 +604,102 @@ class TradeListView(LoginRequiredMixin, ListView):
         return queryset
 
     def get_context_data(self, **kwargs):
+        import json
+        from django.db.models import Sum, Avg
         context = super().get_context_data(**kwargs)
-        context['current_sort'] = self.request.GET.get('sort', '-timestamp')
-        context['search_query'] = self.request.GET.get('search', '')
+        
+        job_filter = self.request.GET.get('job', '').strip()
+        search_query = self.request.GET.get('search', '').strip()
+        current_sort = self.request.GET.get('sort', '-timestamp')
+        
+        # Distinct jobs available for filter dropdown
+        user_jobs = AutobuyJob.objects.filter(user=self.request.user).values_list('name', flat=True)
+        trade_jobs = Trade.objects.filter(user=self.request.user).values_list('job_name', flat=True).distinct()
+        available_jobs = sorted(list(set(list(user_jobs) + list(trade_jobs))))
+
+        # Summary Metrics on the filtered queryset (unpaginated)
+        filtered_qs = self.get_queryset()
+        total_trades = filtered_qs.count()
+        stats_agg = filtered_qs.aggregate(
+            total_spent=Sum('amount_spent'),
+            total_fees=Sum('fee_incurred'),
+            avg_spent=Avg('amount_spent')
+        )
+        total_spent = stats_agg['total_spent'] or 0
+        total_fees = stats_agg['total_fees'] or 0
+        avg_trade_size = stats_agg['avg_spent'] or 0
+
+        # Portfolio summary for current pricing
+        from .services.portfolio import PortfolioService
+        price_map = {}
+        try:
+            portfolio_service = PortfolioService(self.request.user)
+            portfolio_data = portfolio_service.get_portfolio_summary()
+            price_map = {h['symbol']: h['current_price'] for h in portfolio_data.get('holdings', [])}
+        except Exception:
+            price_map = {}
+
+        # Timeline Data (Cumulative Investment & Profit Over Time)
+        chronological_trades = filtered_qs.order_by('timestamp')
+        timeline_labels = []
+        timeline_values = []
+        profit_values = []
+        
+        running_spent = 0.0
+        running_fees = 0.0
+        running_tokens = {}
+
+        for t in chronological_trades:
+            running_spent += float(t.amount_spent)
+            running_fees += float(t.fee_incurred)
+            running_tokens[t.symbol] = running_tokens.get(t.symbol, 0.0) + float(t.amount_received)
+            
+            # Calculate market valuation of accumulated tokens up to this trade
+            cur_val = 0.0
+            for sym, qty in running_tokens.items():
+                cur_price = float(price_map.get(sym, 0.0))
+                if cur_price == 0.0:
+                    cur_price = float(t.purchase_price)
+                cur_val += (qty * cur_price)
+            
+            pnl = cur_val - running_spent - running_fees
+            
+            timeline_labels.append(t.timestamp.strftime('%b %d, %H:%M'))
+            timeline_values.append(round(running_spent, 2))
+            profit_values.append(round(pnl, 2))
+
+        # Asset Breakdown Data
+        breakdown_agg = (
+            filtered_qs.values('symbol')
+            .annotate(total=Sum('amount_spent'))
+            .order_by('-total')
+        )
+        breakdown_labels = [item['symbol'] for item in breakdown_agg]
+        breakdown_values = [round(float(item['total']), 2) for item in breakdown_agg]
+
+        context.update({
+            'current_sort': current_sort,
+            'search_query': search_query,
+            'job_filter': job_filter,
+            'available_jobs': available_jobs,
+            'total_trades': total_trades,
+            'total_spent': total_spent,
+            'total_fees': total_fees,
+            'avg_trade_size': avg_trade_size,
+            'timeline_labels_json': json.dumps(timeline_labels),
+            'timeline_values_json': json.dumps(timeline_values),
+            'profit_values_json': json.dumps(profit_values),
+            'breakdown_labels_json': json.dumps(breakdown_labels),
+            'breakdown_values_json': json.dumps(breakdown_values),
+            'is_filtered': bool(job_filter or search_query)
+        })
         return context
 
 @login_required
 def export_trades_csv(request):
     import csv
     from django.http import HttpResponse
+    from django.db.models import Q
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="moondrip_trades.csv"'
@@ -581,18 +707,24 @@ def export_trades_csv(request):
     writer = csv.writer(response)
     writer.writerow(['Date/Time (UTC)', 'Job Name', 'Exchange', 'Pair', 'Type', 'Amount', 'Price', 'Cost', 'Fees'])
 
-    trades = Trade.objects.filter(user=request.user).order_by('-timestamp')
+    trades = Trade.objects.filter(user=request.user)
     
-    # Apply same search filter if present (optional, but good UX)
-    search_query = request.GET.get('search', '')
+    # Filter by job if present
+    job_filter = request.GET.get('job', '').strip()
+    if job_filter:
+        trades = trades.filter(Q(job_name=job_filter) | Q(job__name=job_filter))
+
+    # Filter by search if present
+    search_query = request.GET.get('search', '').strip()
     if search_query:
-        from django.db.models import Q
         trades = trades.filter(
             Q(job_name__icontains=search_query) |
             Q(exchange_name__icontains=search_query) |
             Q(symbol__icontains=search_query) |
             Q(order_type__icontains=search_query)
         )
+
+    trades = trades.order_by('-timestamp')
 
     for trade in trades:
         writer.writerow([
@@ -664,4 +796,26 @@ class TestEmailView(UserPassesTestMixin, View):
             messages.error(request, f"Failed to send email: {str(e)}")
             
         return redirect('site_settings')
+
+class AccountPairsView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        account = get_object_or_404(ExchangeAccount, pk=pk, user=request.user)
+        quote = request.GET.get('quote')
+        from .services.exchange_service import ExchangeService
+        service = ExchangeService(account)
+        try:
+            pairs = service.get_available_pairs(quote_currency=quote)
+            return JsonResponse({
+                'success': True,
+                'account_id': account.id,
+                'exchange': account.exchange.name,
+                'quote': quote,
+                'pairs': pairs
+            })
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e),
+                'pairs': []
+            })
 

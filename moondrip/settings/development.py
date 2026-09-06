@@ -3,7 +3,7 @@ from .base import *
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = ['https://*.ngrok-free.app', 'http://127.0.0.1:7060', 'http://localhost:7060']
+CSRF_TRUSTED_ORIGINS = ['https://*.ngrok-free.app', 'http://127.0.0.1:7060', 'http://localhost:7060', 'http://127.0.0.1:8000', 'http://localhost:8000']
 
 # Optional: Override database for development if needed, 
 # but base.py already handles local sqlite default.

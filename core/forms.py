@@ -5,6 +5,22 @@ from .models import ExchangeAccount, AutobuyJob, JobToken, SupportedExchange, Ap
 from .services.exchange_service import ExchangeService
 
 class UserProfileForm(forms.ModelForm):
+    notify_trade_success = forms.BooleanField(
+        required=False,
+        label="Successful Trade Alerts",
+        help_text="Receive an email summary whenever a scheduled DCA trade executes."
+    )
+    notify_trade_failed = forms.BooleanField(
+        required=False,
+        label="Failed Trade Alerts",
+        help_text="Receive an immediate email alert if an order fails on the exchange."
+    )
+    notify_trade_skipped_paused = forms.BooleanField(
+        required=False,
+        label="Paused Job Alerts",
+        help_text="Receive an email notice if a scheduled trade was skipped because the job is paused."
+    )
+
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'email']
@@ -13,6 +29,25 @@ class UserProfileForm(forms.ModelForm):
             'last_name': 'Last Name',
             'email': 'Email Address',
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and hasattr(self.instance, 'userprofile'):
+            profile = self.instance.userprofile
+            self.fields['notify_trade_success'].initial = profile.notify_trade_success
+            self.fields['notify_trade_failed'].initial = profile.notify_trade_failed
+            self.fields['notify_trade_skipped_paused'].initial = profile.notify_trade_skipped_paused
+
+    def save(self, commit=True):
+        user = super().save(commit=commit)
+        if hasattr(user, 'userprofile'):
+            profile = user.userprofile
+            profile.notify_trade_success = self.cleaned_data.get('notify_trade_success', True)
+            profile.notify_trade_failed = self.cleaned_data.get('notify_trade_failed', True)
+            profile.notify_trade_skipped_paused = self.cleaned_data.get('notify_trade_skipped_paused', True)
+            if commit:
+                profile.save()
+        return user
 
 class ExchangeAccountForm(forms.ModelForm):
     class Meta:
@@ -105,7 +140,24 @@ class AutobuyJobForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['account'].queryset = ExchangeAccount.objects.filter(user=user)
 
-# JobToken formset will be needed for the dynamic token list
+class JobTokenForm(forms.ModelForm):
+    class Meta:
+        model = JobToken
+        fields = ['token_symbol', 'percentage']
+        widgets = {
+            'token_symbol': forms.TextInput(attrs={
+                'list': 'available-pairs-list',
+                'placeholder': 'e.g. BTC/USDT or BTC',
+                'autocomplete': 'off',
+                'class': 'token-symbol-input'
+            }),
+            'percentage': forms.NumberInput(attrs={
+                'step': '0.01',
+                'min': '0',
+                'max': '100',
+                'placeholder': '100'
+            }),
+        }
 
 class AppSettingsForm(forms.ModelForm):
     class Meta:

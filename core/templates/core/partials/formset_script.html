@@ -4,8 +4,137 @@
         const tokenContainer = document.getElementById('token-formset');
         const totalForms = document.getElementById('id_tokens-TOTAL_FORMS');
         const counter = document.getElementById('allocation-counter');
-        const form = document.querySelector('form');
+        const form = document.getElementById('job-form') || document.querySelector('form');
+        const submitBtn = document.getElementById('job-submit-btn') || (form ? form.querySelector('button[type="submit"]') : null);
         const errorMsg = document.getElementById('allocation-error');
+        const accountSelect = document.getElementById('id_account');
+        const quoteSelect = document.getElementById('id_quote_currency');
+        const totalAmountInput = document.getElementById('id_total_amount');
+        const pairsList = document.getElementById('available-pairs-list');
+        const pairsStatusMsg = document.getElementById('pairs-status-msg');
+
+        let availableSymbols = new Set();
+        let availableBases = new Set();
+        let pairsMap = new Map();
+        let pairsLoaded = false;
+
+        // --- 1. Fetch & Populate Exchange Pairs ---
+        function fetchAvailablePairs() {
+            if (!accountSelect || !accountSelect.value) {
+                if (pairsStatusMsg) {
+                    pairsStatusMsg.textContent = 'Select an exchange account to load available trading pairs.';
+                    pairsStatusMsg.className = 'text-xs text-gray-400 mt-0.5';
+                }
+                if (pairsList) pairsList.innerHTML = '';
+                availableSymbols.clear();
+                availableBases.clear();
+                pairsMap.clear();
+                pairsLoaded = false;
+                return;
+            }
+
+            const accountId = accountSelect.value;
+            const quoteCurrency = quoteSelect ? quoteSelect.value : '';
+
+            if (pairsStatusMsg) {
+                pairsStatusMsg.textContent = 'Loading available trading pairs & limits from exchange...';
+                pairsStatusMsg.className = 'text-xs text-blue-400 mt-0.5 animate-pulse';
+            }
+
+            const urlTemplate = "{% url 'account_pairs' pk=123456789 %}";
+            const pairsUrl = urlTemplate.replace('123456789', accountId) + '?quote=' + encodeURIComponent(quoteCurrency);
+
+            fetch(pairsUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && Array.isArray(data.pairs)) {
+                        availableSymbols.clear();
+                        availableBases.clear();
+                        pairsMap.clear();
+                        if (pairsList) pairsList.innerHTML = '';
+
+                        data.pairs.forEach(pair => {
+                            const symUpper = pair.symbol.toUpperCase();
+                            const baseUpper = pair.base.toUpperCase();
+                            availableSymbols.add(symUpper);
+                            availableBases.add(baseUpper);
+                            pairsMap.set(symUpper, pair);
+                            pairsMap.set(baseUpper, pair);
+
+                            if (pairsList) {
+                                const option = document.createElement('option');
+                                option.value = pair.symbol;
+                                let minInfo = '';
+                                if (pair.min_quote_estimate) {
+                                    minInfo = ` (Min: ~$${pair.min_quote_estimate.toFixed(2)} ${pair.quote})`;
+                                } else if (pair.min_cost) {
+                                    minInfo = ` (Min: $${parseFloat(pair.min_cost).toFixed(2)} ${pair.quote})`;
+                                } else if (pair.min_amount) {
+                                    minInfo = ` (Min: ${pair.min_amount} ${pair.base})`;
+                                }
+                                option.textContent = `${pair.symbol}${minInfo}`;
+                                pairsList.appendChild(option);
+                            }
+                        });
+
+                        pairsLoaded = true;
+                        if (pairsStatusMsg) {
+                            pairsStatusMsg.innerHTML = `<span class="text-green-400">✓ ${data.pairs.length} available trading pairs & limits loaded from ${data.exchange} for ${quoteCurrency}</span>`;
+                            pairsStatusMsg.className = 'text-xs mt-0.5';
+                        }
+                    } else {
+                        pairsLoaded = false;
+                        if (pairsStatusMsg) {
+                            pairsStatusMsg.innerHTML = `<span class="text-yellow-400">⚠️ Unable to load pairs: ${data.error || 'Exchange offline or invalid API keys'}</span>`;
+                            pairsStatusMsg.className = 'text-xs mt-0.5';
+                        }
+                    }
+                    validateAllSymbols();
+                    updateAllocationAmounts();
+                })
+                .catch(err => {
+                    pairsLoaded = false;
+                    if (pairsStatusMsg) {
+                        pairsStatusMsg.innerHTML = `<span class="text-yellow-400">⚠️ Could not load exchange pairs. You can still enter pairs manually.</span>`;
+                        pairsStatusMsg.className = 'text-xs mt-0.5';
+                    }
+                });
+        }
+
+        // --- 2. Allocation & Percentage Calculation ---
+        function updateAllocationAmounts() {
+            const totalAmount = parseFloat(totalAmountInput ? totalAmountInput.value : 0) || 0;
+            const quoteCurrency = quoteSelect ? quoteSelect.value : 'USDT';
+            const percentageInputs = tokenContainer.querySelectorAll('input[name$="-percentage"]');
+
+            percentageInputs.forEach(input => {
+                const percentage = parseFloat(input.value) || 0;
+                const amount = (percentage / 100) * totalAmount;
+                const formRow = input.closest('.token-form');
+                const symbolInput = formRow ? formRow.querySelector('input[name$="-token_symbol"]') : null;
+                const rawSymbol = symbolInput ? symbolInput.value.trim().toUpperCase() : '';
+                const formattedPair = rawSymbol.includes('/') ? rawSymbol : `${rawSymbol}/${quoteCurrency.toUpperCase()}`;
+                const pairData = pairsMap.get(formattedPair) || pairsMap.get(rawSymbol);
+
+                let displaySpan = input.parentNode.querySelector('.allocation-amount');
+                if (!displaySpan) {
+                    displaySpan = document.createElement('div');
+                    displaySpan.className = 'allocation-amount text-xs mt-1 font-mono';
+                    input.parentNode.appendChild(displaySpan);
+                }
+
+                let warningText = '';
+                const minReq = pairData ? (pairData.min_quote_estimate || (pairData.min_cost ? parseFloat(pairData.min_cost) : null)) : null;
+                if (minReq && amount > 0 && amount < minReq) {
+                    warningText = ` <span class="text-red-400 font-semibold block sm:inline sm:ml-1">⚠️ Below min ~$${minReq.toFixed(2)} ${quoteCurrency}</span>`;
+                    displaySpan.className = 'allocation-amount text-xs mt-1 font-mono text-yellow-300';
+                } else {
+                    displaySpan.className = 'allocation-amount text-xs mt-1 font-mono text-green-400';
+                }
+
+                displaySpan.innerHTML = `≈ $${amount.toFixed(2)} ${quoteCurrency}${warningText}`;
+            });
+        }
 
         function updatePercentage() {
             let total = 0;
@@ -13,39 +142,210 @@
 
             percentageInputs.forEach(input => {
                 const formRow = input.closest('.token-form');
-                // Check if this row is hidden(deleted)
                 if (formRow && !formRow.classList.contains('hidden')) {
                     total += parseFloat(input.value) || 0;
                 }
             });
 
-            counter.textContent = total + "%";
+            total = Math.round(total * 100) / 100;
+            const remaining = Math.round((100 - total) * 100) / 100;
+            const remainingSpan = document.getElementById('allocation-remaining');
 
-            if (total === 100) {
-                counter.classList.remove('text-red-400');
-                counter.classList.add('text-green-400');
-                errorMsg.classList.add('hidden');
-            } else {
-                counter.classList.remove('text-green-400');
-                counter.classList.add('text-red-400');
+            if (counter) {
+                counter.textContent = total + "%";
+                if (Math.abs(total - 100) < 0.001) {
+                    counter.classList.remove('text-red-400');
+                    counter.classList.add('text-green-400');
+                    if (remainingSpan) {
+                        remainingSpan.textContent = "(0% Remaining)";
+                        remainingSpan.className = "text-xs text-green-400 ml-1 font-medium";
+                    }
+                    if (errorMsg) errorMsg.classList.add('hidden');
+                } else if (total > 100) {
+                    counter.classList.remove('text-green-400');
+                    counter.classList.add('text-red-400');
+                    if (remainingSpan) {
+                        const over = Math.round((total - 100) * 100) / 100;
+                        remainingSpan.textContent = `(${over}% Over)`;
+                        remainingSpan.className = "text-xs text-red-400 ml-1 font-medium";
+                    }
+                } else {
+                    counter.classList.remove('text-green-400');
+                    counter.classList.add('text-red-400');
+                    if (remainingSpan) {
+                        remainingSpan.textContent = `(${remaining}% Remaining)`;
+                        remainingSpan.className = "text-xs text-gray-400 ml-1 font-medium";
+                    }
+                }
             }
             return total;
         }
 
-        // Initial Calculation
-        updatePercentage();
+        // --- 3. Symbol Validation & Feedback ---
+        function validateSymbolInput(input) {
+            const val = input.value.trim().toUpperCase();
+            let feedback = input.parentNode.querySelector('.symbol-feedback');
+            if (!feedback) {
+                feedback = document.createElement('div');
+                feedback.className = 'symbol-feedback text-xs mt-1 font-medium';
+                input.parentNode.appendChild(feedback);
+            }
 
-        // Event Delegation for percentage updates and uppercase symbol
+            if (!val) {
+                feedback.textContent = '';
+                return true;
+            }
+
+            if (pairsLoaded && availableSymbols.size > 0) {
+                const quoteCurrency = quoteSelect ? quoteSelect.value.toUpperCase() : 'USDT';
+                const formattedPair = val.includes('/') ? val : `${val}/${quoteCurrency}`;
+                const pairData = pairsMap.get(formattedPair) || pairsMap.get(val);
+
+                if (availableSymbols.has(formattedPair) || availableBases.has(val)) {
+                    let minLimitMsg = '';
+                    if (pairData && pairData.min_quote_estimate) {
+                        minLimitMsg = `<span class="text-blue-300 ml-1.5 font-normal">Min: ~$${pairData.min_quote_estimate.toFixed(2)} ${pairData.quote}${pairData.min_amount ? ` (${pairData.min_amount} ${pairData.base})` : ''}</span>`;
+                    } else if (pairData && pairData.min_cost) {
+                        minLimitMsg = `<span class="text-blue-300 ml-1.5 font-normal">Min: $${parseFloat(pairData.min_cost).toFixed(2)} ${pairData.quote}</span>`;
+                    } else if (pairData && pairData.min_amount) {
+                        minLimitMsg = `<span class="text-blue-300 ml-1.5 font-normal">Min: ${pairData.min_amount} ${pairData.base}</span>`;
+                    }
+                    feedback.innerHTML = `<span class="text-green-400">✓ Valid pair: ${formattedPair}</span>${minLimitMsg}`;
+                    return true;
+                } else {
+                    feedback.innerHTML = `<span class="text-red-400">⚠️ ${formattedPair} not found on this exchange</span>`;
+                    return false;
+                }
+            } else {
+                feedback.textContent = '';
+                return true;
+            }
+        }
+
+        function validateAllSymbols() {
+            const symbolInputs = tokenContainer.querySelectorAll('input[name$="-token_symbol"]');
+            let allValid = true;
+            symbolInputs.forEach(input => {
+                const formRow = input.closest('.token-form');
+                if (formRow && !formRow.classList.contains('hidden')) {
+                    const valid = validateSymbolInput(input);
+                    if (!valid) allValid = false;
+                }
+            });
+            return allValid;
+        }
+
+        // --- 4. Field Availability / Disabled State until Exchange Selected ---
+        function updateFieldAvailability() {
+            const hasAccount = !!(accountSelect && accountSelect.value);
+
+            // Fields that depend on exchange account
+            const dependentFieldIds = ['id_total_amount', 'id_quote_currency', 'id_interval', 'id_start_time', 'id_end_date'];
+            dependentFieldIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.disabled = !hasAccount;
+                    if (!hasAccount) {
+                        el.classList.add('opacity-50', 'cursor-not-allowed', 'bg-gray-600');
+                    } else {
+                        el.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-gray-600');
+                    }
+                }
+            });
+
+            // Token formset inputs and delete buttons
+            if (tokenContainer) {
+                const tokenInputs = tokenContainer.querySelectorAll('input, button');
+                tokenInputs.forEach(el => {
+                    if (el.type !== 'hidden') {
+                        el.disabled = !hasAccount;
+                        if (!hasAccount) {
+                            el.classList.add('opacity-50', 'cursor-not-allowed');
+                        } else {
+                            el.classList.remove('opacity-50', 'cursor-not-allowed');
+                        }
+                    }
+                });
+            }
+
+            // Add Token Button
+            if (addTokenBtn) {
+                addTokenBtn.disabled = !hasAccount;
+                if (!hasAccount) {
+                    addTokenBtn.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+                } else {
+                    addTokenBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+                }
+            }
+
+            // Submit Button
+            if (submitBtn) {
+                submitBtn.disabled = !hasAccount;
+                if (!hasAccount) {
+                    submitBtn.classList.add('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+                } else {
+                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'pointer-events-none');
+                }
+            }
+
+            // Helper hint under account select
+            let accountNotice = document.getElementById('account-select-hint');
+            if (!accountNotice && accountSelect) {
+                accountNotice = document.createElement('p');
+                accountNotice.id = 'account-select-hint';
+                accountNotice.className = 'text-xs text-amber-400 mt-1.5 font-medium';
+                const parentDiv = accountSelect.closest('div');
+                if (parentDiv && parentDiv.parentNode) {
+                    parentDiv.parentNode.appendChild(accountNotice);
+                }
+            }
+            if (accountNotice) {
+                if (!hasAccount) {
+                    accountNotice.innerHTML = '👉 Select an Exchange Account first to configure amount, schedule, and token allocations.';
+                    accountNotice.classList.remove('hidden');
+                } else {
+                    accountNotice.classList.add('hidden');
+                }
+            }
+        }
+
+        // --- 5. Event Listeners ---
+        if (accountSelect) {
+            accountSelect.addEventListener('change', function () {
+                updateFieldAvailability();
+                fetchAvailablePairs();
+            });
+        }
+        if (quoteSelect) {
+            quoteSelect.addEventListener('change', function () {
+                fetchAvailablePairs();
+                updateAllocationAmounts();
+            });
+        }
+        if (totalAmountInput) {
+            totalAmountInput.addEventListener('input', updateAllocationAmounts);
+        }
+
         tokenContainer.addEventListener('input', function (e) {
             if (e.target.name && e.target.name.includes('percentage')) {
                 updatePercentage();
+                updateAllocationAmounts();
             }
             if (e.target.name && e.target.name.includes('token_symbol')) {
                 e.target.value = e.target.value.toUpperCase();
+                validateSymbolInput(e.target);
+                updateAllocationAmounts();
             }
         });
 
-        // Event Delegation for Delete Buttons
+        tokenContainer.addEventListener('change', function (e) {
+            if (e.target.name && e.target.name.includes('token_symbol')) {
+                validateSymbolInput(e.target);
+                updateAllocationAmounts();
+            }
+        });
+
+        // Delete Row Delegation
         tokenContainer.addEventListener('click', function (e) {
             const deleteBtn = e.target.closest('.delete-token-btn');
             if (deleteBtn) {
@@ -53,47 +353,23 @@
                 const deleteInput = row.querySelector('input[name$="-DELETE"]');
 
                 if (deleteInput) {
-                    // For existing forms, check the hidden DELETE checkbox and hide row
                     deleteInput.checked = true;
                     row.classList.add('hidden');
                 } else {
-                    // For new forms (no ID yet usually, but our template includes ID field), 
-                    // if it was dynamically added, we might just remove it.
-                    // However, Django formsets rely on management form indices. 
-                    // Safest for dynamic forms without ID is to remove, but we need to re-index.
-                    // Simpler approach for now: verify if it has an ID value.
-                    const idInput = row.querySelector('input[name$="-id"]');
-                    if (idInput && idInput.value) {
-                        // Has ID, strict delete
-                        // But wait, our template puts DELETE checkbox only if it exists? 
-                        // No, we added a hidden one manually in loop.
-                        // So we should be good to just check it.
-                        // Actually, we need to ensure the checkbox exists. 
-                        // If it's a fresh form added via JS, it might not have the DELETE field if we cloned a fresh one?
-                        // Let's check.
-                    }
-
-                    // If we just hide it and it doesn't have a DELETE field (newly added), it will still be submitted...
-                    // and might cause validation errors if empty. 
-                    // For new rows, we should remove them from DOM and update TOTAL_FORMS, or just clear values and hide?
-                    // Removing from DOM is best but requires reindexing. 
-                    // Let's try just hiding and clearing values for now, effectively making it "empty".
-                    // Django ignores empty forms if not required.
                     row.remove();
-                    // Update indices? Yes we should.
                     updateIndices();
                 }
                 updatePercentage();
+                updateAllocationAmounts();
             }
         });
 
         function updateIndices() {
             const forms = tokenContainer.querySelectorAll('.token-form');
-            totalForms.value = forms.length;
-            forms.forEach((form, index) => {
-                form.id = `form-${index}`;
-                // Update inputs
-                const inputs = form.querySelectorAll('input, select, textarea');
+            if (totalForms) totalForms.value = forms.length;
+            forms.forEach((formRow, index) => {
+                formRow.id = `form-${index}`;
+                const inputs = formRow.querySelectorAll('input, select, textarea');
                 inputs.forEach(input => {
                     if (input.name) {
                         input.name = input.name.replace(/tokens-\d+-/, `tokens-${index}-`);
@@ -103,46 +379,103 @@
             });
         }
 
-        addTokenBtn.addEventListener('click', function () {
-            const forms = tokenContainer.getElementsByClassName('token-form');
-            const formCount = forms.length;
-
-            // Clone the first form (assuming at least one exists, or use empty_form pattern)
-            // If no forms exist (deleted all?), we might be in trouble. 
-            // Better to have a hidden empty template.
-            // For now, let's assume at least one.
-            let newForm;
-            if (forms.length > 0) {
-                newForm = forms[0].cloneNode(true);
-            } else {
-                return; // Should create an empty form template logic if needed
-            }
-
-            // Clean up new form
-            newForm.classList.remove('hidden');
-            const inputs = newForm.querySelectorAll('input');
-            inputs.forEach(input => {
-                if (input.type !== 'hidden' || input.name.includes('percentage') || input.name.includes('token_symbol')) {
-                    input.value = '';
+        // Add Row
+        if (addTokenBtn) {
+            addTokenBtn.addEventListener('click', function () {
+                const forms = tokenContainer.getElementsByClassName('token-form');
+                let newForm;
+                if (forms.length > 0) {
+                    newForm = forms[0].cloneNode(true);
+                } else {
+                    return;
                 }
-                // Uncheck DELETE if we cloned a deleted row
-                if (input.name.includes('DELETE')) {
-                    input.checked = false;
+
+                newForm.classList.remove('hidden');
+                const inputs = newForm.querySelectorAll('input');
+                inputs.forEach(input => {
+                    if (input.type !== 'hidden' || input.name.includes('percentage') || input.name.includes('token_symbol')) {
+                        input.value = '';
+                    }
+                    if (input.name.includes('DELETE')) {
+                        input.checked = false;
+                    }
+                    if (input.name.includes('token_symbol')) {
+                        input.setAttribute('list', 'available-pairs-list');
+                    }
+                });
+
+                // Clear any leftover feedback spans in the clone
+                const oldFeedback = newForm.querySelector('.symbol-feedback');
+                if (oldFeedback) oldFeedback.remove();
+                const oldAllocation = newForm.querySelector('.allocation-amount');
+                if (oldAllocation) oldAllocation.remove();
+
+                tokenContainer.appendChild(newForm);
+                updateIndices();
+                updateAllocationAmounts();
+                updateFieldAvailability();
+            });
+        }
+
+        // Form Submit Validation & Double Click Prevention
+        if (form && submitBtn) {
+            let isJobSubmitting = false;
+
+            submitBtn.addEventListener('click', function (e) {
+                if (isJobSubmitting) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
                 }
             });
 
-            // Update indices before appending? No, append then reindex all to be safe
-            tokenContainer.appendChild(newForm);
-            updateIndices();
-        });
+            form.addEventListener('submit', function (e) {
+                if (isJobSubmitting) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
 
-        form.addEventListener('submit', function (e) {
-            const total = updatePercentage();
-            if (total !== 100) {
-                e.preventDefault();
-                errorMsg.classList.remove('hidden');
-                errorMsg.scrollIntoView({ behavior: 'smooth' });
-            }
-        });
+                const total = updatePercentage();
+                if (Math.abs(total - 100) >= 0.001) {
+                    e.preventDefault();
+                    if (errorMsg) {
+                        errorMsg.classList.remove('hidden');
+                        errorMsg.scrollIntoView({ behavior: 'smooth' });
+                    }
+                    return;
+                }
+
+                if (pairsLoaded && availableSymbols.size > 0) {
+                    const validSymbols = validateAllSymbols();
+                    if (!validSymbols) {
+                        e.preventDefault();
+                        alert('One or more selected tokens are not supported on this exchange for the selected quote currency. Please select valid trading pairs.');
+                        return;
+                    }
+                }
+
+                if (submitBtn) {
+                    isJobSubmitting = true;
+                    submitBtn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+                    submitBtn.innerHTML = `
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        Saving & Validating with Exchange...
+                    `;
+                    setTimeout(() => {
+                        submitBtn.disabled = true;
+                    }, 10);
+                }
+            });
+        }
+
+        // Initial Calls
+        updateFieldAvailability();
+        updatePercentage();
+        updateAllocationAmounts();
+        fetchAvailablePairs();
     });
 </script>

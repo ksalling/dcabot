@@ -2,130 +2,258 @@
 
 {% block content %}
 <div class="max-w-6xl mx-auto space-y-8">
-    <div class="flex justify-between items-center">
-        <h2 class="text-3xl font-bold text-white">All Trades</h2>
-        <a href="{% url 'dashboard' %}" class="text-gray-400 hover:text-white">← Back to Dashboard</a>
-    </div>
-
-    <div class="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow-lg">
-        <form method="get" class="flex items-center space-x-2 w-full max-w-md">
-            <input type="text" name="search" value="{{ search_query }}" placeholder="Search trades..."
-                class="bg-gray-700 text-white border border-gray-600 rounded px-4 py-2 w-full focus:outline-none focus:border-blue-500">
-            {% if current_sort %}
-            <input type="hidden" name="sort" value="{{ current_sort }}">
-            {% endif %}
-            <button type="submit"
-                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold transition-colors">
-                Search
-            </button>
-            {% if search_query %}
-            <a href="{% url 'trade_list' %}" class="text-gray-400 hover:text-white text-sm">Clear</a>
-            {% endif %}
-        </form>
-
-        <a href="{% url 'trade_export' %}?search={{ search_query }}"
-            class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold transition-colors flex items-center space-x-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            <span>Export CSV</span>
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-white">All Trades</h2>
+            <p class="text-sm text-gray-400 mt-1">
+                Historical trade execution log and performance analytics
+                {% if job_filter %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-900/60 text-blue-300 border border-blue-700 ml-2">
+                    Job: {{ job_filter }}
+                </span>
+                {% endif %}
+            </p>
+        </div>
+        <a href="{% url 'dashboard' %}" class="inline-flex items-center text-gray-400 hover:text-white transition-colors text-sm">
+            ← Back to Dashboard
         </a>
     </div>
 
-    <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+    <!-- Summary Performance Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Total Trades -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-blue-500">
+            <h3 class="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Trades</h3>
+            <p class="text-3xl font-bold text-white mt-2">{{ total_trades }}</p>
+            <p class="text-xs text-gray-500 mt-2">Executed trade orders</p>
+        </div>
+
+        <!-- Total Invested -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-emerald-500">
+            <h3 class="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Invested</h3>
+            <p class="text-3xl font-bold text-white mt-2">${{ total_spent|stringformat:".2f" }}</p>
+            <p class="text-xs text-gray-500 mt-2">Total cumulative volume spent</p>
+        </div>
+
+        <!-- Total Fees -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-amber-500">
+            <h3 class="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Fees Incurred</h3>
+            <p class="text-3xl font-bold text-amber-400 mt-2">${{ total_fees|stringformat:".4f" }}</p>
+            <p class="text-xs text-gray-500 mt-2">Exchange transaction costs</p>
+        </div>
+
+        <!-- Avg Trade Size -->
+        <div class="bg-gray-800 rounded-lg p-6 shadow-lg border-t-4 border-purple-500">
+            <h3 class="text-gray-400 text-xs font-bold uppercase tracking-wider">Avg Trade Size</h3>
+            <p class="text-3xl font-bold text-purple-300 mt-2">${{ avg_trade_size|stringformat:".2f" }}</p>
+            <p class="text-xs text-gray-500 mt-2">Average order execution cost</p>
+        </div>
+    </div>
+
+    <!-- Performance Graphs Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Performance Line Chart Card -->
+        <div class="lg:col-span-2 bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-700/60">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                    <h3 id="chart-main-title" class="text-base font-bold text-white flex items-center gap-2">
+                        <span>💰</span> Profit Over Time
+                    </h3>
+                    <p id="chart-sub-title" class="text-xs text-gray-400 mt-0.5">Net Profit / PnL ($) Based on Live Valuations</p>
+                </div>
+
+                <!-- Graph Selection Dropdown -->
+                <div class="flex items-center bg-gray-900 border border-gray-700 rounded px-2.5 py-1 focus-within:border-blue-500 self-start sm:self-auto">
+                    <label for="chart-metric-select" class="text-xs text-gray-400 mr-2 font-medium">Chart:</label>
+                    <select id="chart-metric-select" onchange="switchChartMetric(this.value)"
+                            class="bg-transparent text-white text-xs focus:outline-none cursor-pointer">
+                        <option value="profit" class="bg-gray-800 text-white" selected>Profit Over Time ($)</option>
+                        <option value="cumulative" class="bg-gray-800 text-white">Cumulative Investment Growth ($)</option>
+                    </select>
+                </div>
+            </div>
+            {% if total_trades > 0 %}
+            <div class="relative h-64 w-full">
+                <canvas id="timelineChart"></canvas>
+            </div>
+            {% else %}
+            <div class="h-64 flex items-center justify-center text-gray-500 text-sm">
+                No trade data available for chart.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Asset Allocation Breakdown Chart -->
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6 border border-gray-700/60">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <span>🍩</span> Asset Allocation
+                </h3>
+                <span class="text-xs text-gray-400">Volume by Pair</span>
+            </div>
+            {% if total_trades > 0 %}
+            <div class="relative h-64 w-full flex items-center justify-center">
+                <canvas id="breakdownChart"></canvas>
+            </div>
+            {% else %}
+            <div class="h-64 flex items-center justify-center text-gray-500 text-sm">
+                No asset data available.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Filter & Export Controls Bar -->
+    <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-700/60">
+        <form id="filter-form" method="get" class="flex flex-wrap items-center gap-3 w-full md:max-w-2xl">
+            <!-- Job Name Filter Dropdown -->
+            <div class="flex items-center bg-gray-900 border border-gray-600 rounded px-2.5 py-1.5 focus-within:border-blue-500">
+                <label for="job-select" class="text-xs text-gray-400 mr-2 font-medium">Job:</label>
+                <select id="job-select" name="job" onchange="this.form.submit()"
+                        class="bg-transparent text-white text-sm focus:outline-none cursor-pointer">
+                    <option value="" class="bg-gray-800 text-white">All Jobs</option>
+                    {% for j in available_jobs %}
+                    <option value="{{ j }}" class="bg-gray-800 text-white" {% if job_filter == j %}selected{% endif %}>
+                        {{ j }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Search Input -->
+            <div class="relative flex-1 min-w-[200px]">
+                <input type="text" name="search" value="{{ search_query }}" placeholder="Search pair, exchange, type..."
+                    class="bg-gray-700 text-white border border-gray-600 rounded px-3 py-1.5 w-full text-sm focus:outline-none focus:border-blue-500">
+            </div>
+
+            {% if current_sort %}
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+            {% endif %}
+
+            <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm font-bold transition-colors cursor-pointer">
+                Filter
+            </button>
+
+            {% if is_filtered %}
+            <a href="{% url 'trade_list' %}" class="text-gray-400 hover:text-white text-xs underline py-1">
+                Clear Filters
+            </a>
+            {% endif %}
+        </form>
+
+        <!-- Export CSV Button -->
+        <div>
+            {% if is_filtered %}
+            <!-- Filtered Export Trigger: opens warning modal -->
+            <button type="button" onclick="openExportModal()"
+                id="export-trigger-btn"
+                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded text-sm font-bold transition-colors flex items-center space-x-2 cursor-pointer w-full md:w-auto justify-center shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Export CSV</span>
+            </button>
+            {% else %}
+            <!-- Unfiltered Export: direct download with multi-click prevention -->
+            <a href="{% url 'trade_export' %}"
+                id="direct-export-btn"
+                onclick="handleDirectExport(this)"
+                class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded text-sm font-bold transition-colors flex items-center space-x-2 cursor-pointer w-full md:w-auto justify-center shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span id="direct-export-text">Export CSV</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Trades Table -->
+    <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700/60">
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left text-gray-400">
-                <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
+                <thead class="text-xs text-gray-500 uppercase bg-gray-900/50 border-b border-gray-700">
                     <tr>
                         <th class="px-6 py-3">
-                            <a href="?sort={% if current_sort == 'timestamp' %}-timestamp{% else %}timestamp{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'timestamp' %}-timestamp{% else %}timestamp{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center group">
                                 Date/Time
                                 {% if 'timestamp' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3">
-                            <a href="?sort={% if current_sort == 'job_name' %}-job_name{% else %}job_name{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'job_name' %}-job_name{% else %}job_name{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center group">
                                 Job Name
                                 {% if 'job_name' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3">
-                            <a href="?sort={% if current_sort == 'exchange_name' %}-exchange_name{% else %}exchange_name{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'exchange_name' %}-exchange_name{% else %}exchange_name{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center group">
                                 Exchange
                                 {% if 'exchange_name' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3">
-                            <a href="?sort={% if current_sort == 'symbol' %}-symbol{% else %}symbol{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'symbol' %}-symbol{% else %}symbol{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center group">
                                 Pair
                                 {% if 'symbol' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3">
-                            <a href="?sort={% if current_sort == 'order_type' %}-order_type{% else %}order_type{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'order_type' %}-order_type{% else %}order_type{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center group">
                                 Type
                                 {% if 'order_type' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3 text-right">
-                            <a href="?sort={% if current_sort == 'amount_received' %}-amount_received{% else %}amount_received{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'amount_received' %}-amount_received{% else %}amount_received{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center justify-end group">
                                 Amount
                                 {% if 'amount_received' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3 text-right">
-                            <a href="?sort={% if current_sort == 'purchase_price' %}-purchase_price{% else %}purchase_price{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'purchase_price' %}-purchase_price{% else %}purchase_price{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center justify-end group">
                                 Price
                                 {% if 'purchase_price' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3 text-right">
-                            <a href="?sort={% if current_sort == 'amount_spent' %}-amount_spent{% else %}amount_spent{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'amount_spent' %}-amount_spent{% else %}amount_spent{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center justify-end group">
                                 Cost
                                 {% if 'amount_spent' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
                         <th class="px-6 py-3 text-right">
-                            <a href="?sort={% if current_sort == 'fee_incurred' %}-fee_incurred{% else %}fee_incurred{% endif %}&search={{ search_query }}"
+                            <a href="?sort={% if current_sort == 'fee_incurred' %}-fee_incurred{% else %}fee_incurred{% endif %}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
                                 class="hover:text-white flex items-center justify-end group">
                                 Fees
                                 {% if 'fee_incurred' in current_sort %}
-                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲
-                                    {% endif %}</span>
+                                <span class="ml-1 text-blue-400">{% if '-' in current_sort %}▼{% else %}▲{% endif %}</span>
                                 {% endif %}
                             </a>
                         </th>
@@ -135,22 +263,28 @@
                     {% for trade in trades %}
                     <tr class="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
                         <td class="px-6 py-4">
-                            <span class="local-datetime" data-utc="{{ trade.timestamp.isoformat }}">
+                            <span class="local-datetime text-xs whitespace-nowrap" data-utc="{{ trade.timestamp.isoformat }}">
                                 {{ trade.timestamp|date:"Y-m-d H:i" }}
                             </span>
                         </td>
                         <td class="px-6 py-4 font-medium text-white">{{ trade.job_name }}</td>
-                        <td class="px-6 py-4">{{ trade.exchange_name }}</td>
-                        <td class="px-6 py-4 font-medium text-blue-400">{{ trade.symbol }}</td>
+                        <td class="px-6 py-4 text-gray-300">{{ trade.exchange_name }}</td>
+                        <td class="px-6 py-4 font-semibold text-blue-400">{{ trade.symbol }}</td>
                         <td class="px-6 py-4 uppercase text-xs font-bold">{{ trade.order_type }}</td>
-                        <td class="px-6 py-4 text-right">{{ trade.amount_received|stringformat:".6f" }}</td>
-                        <td class="px-6 py-4 text-right">${{ trade.purchase_price|stringformat:".2f" }}</td>
-                        <td class="px-6 py-4 text-right">${{ trade.amount_spent|stringformat:".2f" }}</td>
-                        <td class="px-6 py-4 text-right text-red-400">{{ trade.fee_incurred|stringformat:".6f" }}</td>
+                        <td class="px-6 py-4 text-right font-mono text-xs">{{ trade.amount_received|stringformat:".6f" }}</td>
+                        <td class="px-6 py-4 text-right font-mono text-xs">${{ trade.purchase_price|stringformat:".2f" }}</td>
+                        <td class="px-6 py-4 text-right font-mono text-xs text-white font-medium">${{ trade.amount_spent|stringformat:".2f" }}</td>
+                        <td class="px-6 py-4 text-right font-mono text-xs text-red-400">${{ trade.fee_incurred|stringformat:".4f" }}</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" class="px-6 py-8 text-center text-gray-500">No trades recorded yet.</td>
+                        <td colspan="9" class="px-6 py-12 text-center text-gray-500">
+                            {% if is_filtered %}
+                            No trades match your active filter criteria. <a href="{% url 'trade_list' %}" class="text-blue-400 hover:underline">Clear filters</a>.
+                            {% else %}
+                            No trades recorded yet.
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -162,15 +296,16 @@
         <div class="px-6 py-4 border-t border-gray-700 flex justify-center">
             <div class="flex space-x-2">
                 {% if page_obj.has_previous %}
-                <a href="?page={{ page_obj.previous_page_number }}"
+                <a href="?page={{ page_obj.previous_page_number }}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}"
                     class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm text-white transition-colors">Previous</a>
                 {% endif %}
 
-                <span class="px-3 py-1 text-gray-400 text-sm">Page {{ page_obj.number }} of {{
-                    page_obj.paginator.num_pages }}</span>
+                <span class="px-3 py-1 text-gray-400 text-sm">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
 
                 {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}"
+                <a href="?page={{ page_obj.next_page_number }}{% if job_filter %}&job={{ job_filter|urlencode }}{% endif %}{% if search_query %}&search={{ search_query|urlencode }}{% endif %}{% if current_sort %}&sort={{ current_sort }}{% endif %}"
                     class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm text-white transition-colors">Next</a>
                 {% endif %}
             </div>
@@ -179,16 +314,315 @@
     </div>
 </div>
 
+<!-- Filtered Export Warning Modal -->
+<div id="export-modal" class="fixed inset-0 bg-black/75 z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-start gap-3">
+            <div class="p-2 rounded-full bg-amber-900/50 text-amber-400 border border-amber-700/50">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white">Export Filtered Dataset</h3>
+                <p class="text-sm text-gray-400 mt-1">
+                    You currently have filters applied. Your export will include only matching trades.
+                </p>
+            </div>
+        </div>
+
+        <!-- Filter Details Box -->
+        <div class="bg-gray-900/80 rounded-lg p-3 border border-gray-700 text-xs space-y-1.5">
+            {% if job_filter %}
+            <div class="flex justify-between">
+                <span class="text-gray-400">Job Filter:</span>
+                <span class="text-blue-400 font-semibold">{{ job_filter }}</span>
+            </div>
+            {% endif %}
+            {% if search_query %}
+            <div class="flex justify-between">
+                <span class="text-gray-400">Search Query:</span>
+                <span class="text-white font-medium">"{{ search_query }}"</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between border-t border-gray-800 pt-1.5 font-medium">
+                <span class="text-gray-300">Total Rows to Export:</span>
+                <span class="text-emerald-400">{{ total_trades }} trade(s)</span>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+            <button type="button" onclick="closeExportModal()"
+                id="export-cancel-btn"
+                class="px-4 py-2 rounded text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer">
+                Cancel
+            </button>
+            <button type="button" onclick="executeModalExport(this)"
+                id="export-confirm-btn"
+                class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded text-sm transition-colors flex items-center gap-2 cursor-pointer shadow-lg">
+                <svg id="modal-export-spinner" class="animate-spin h-4 w-4 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span id="modal-export-text">Confirm & Download</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
+    // Modal Helpers
+    function openExportModal() {
+        document.getElementById('export-modal').classList.remove('hidden');
+    }
+
+    function closeExportModal() {
+        document.getElementById('export-modal').classList.add('hidden');
+    }
+
+    // Multi-click Protected Direct Export
+    function handleDirectExport(anchor) {
+        anchor.classList.add('pointer-events-none', 'opacity-60');
+        const textSpan = document.getElementById('direct-export-text');
+        if (textSpan) textSpan.textContent = 'Exporting...';
+        setTimeout(() => {
+            anchor.classList.remove('pointer-events-none', 'opacity-60');
+            if (textSpan) textSpan.textContent = 'Export CSV';
+        }, 3000);
+    }
+
+    // Modal Export Execution with Multi-Click Lock
+    function executeModalExport(button) {
+        button.disabled = true;
+        document.getElementById('export-cancel-btn').disabled = true;
+        const spinner = document.getElementById('modal-export-spinner');
+        const text = document.getElementById('modal-export-text');
+        if (spinner) spinner.classList.remove('hidden');
+        if (text) text.textContent = 'Exporting...';
+
+        const exportUrl = "{% url 'trade_export' %}?job={{ job_filter|urlencode }}&search={{ search_query|urlencode }}";
+        
+        // Trigger download
+        const downloadIframe = document.createElement('iframe');
+        downloadIframe.style.display = 'none';
+        downloadIframe.src = exportUrl;
+        document.body.appendChild(downloadIframe);
+
+        setTimeout(() => {
+            closeExportModal();
+            button.disabled = false;
+            document.getElementById('export-cancel-btn').disabled = false;
+            if (spinner) spinner.classList.add('hidden');
+            if (text) text.textContent = 'Confirm & Download';
+        }, 2000);
+    }
+
+    // Local Datetime Formatter
+    function updateLocalTimes() {
         const dateElements = document.querySelectorAll('.local-datetime');
         dateElements.forEach(el => {
             const utcTime = el.getAttribute('data-utc');
             if (utcTime) {
                 const date = new Date(utcTime);
-                el.textContent = date.toLocaleString();
+                el.textContent = date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
             }
         });
+    }
+
+    // Initialize Chart.js Graphs
+    let timelineChartInstance = null;
+    let timelineLabels = [];
+    let timelineValues = [];
+    let profitValues = [];
+
+    function getGradient(ctx, isProfit, isPositive) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, 240);
+        if (isProfit) {
+            if (isPositive) {
+                gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)'); // Emerald
+                gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+            } else {
+                gradient.addColorStop(0, 'rgba(244, 63, 94, 0.4)'); // Rose/Red
+                gradient.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
+            }
+        } else {
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Blue
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+        }
+        return gradient;
+    }
+
+    function switchChartMetric(metric) {
+        if (!timelineChartInstance) return;
+
+        const canvas = document.getElementById('timelineChart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        const titleEl = document.getElementById('chart-main-title');
+        const subTitleEl = document.getElementById('chart-sub-title');
+
+        if (metric === 'profit') {
+            const lastVal = profitValues.length > 0 ? profitValues[profitValues.length - 1] : 0;
+            const isPositive = lastVal >= 0;
+            const color = isPositive ? '#10b981' : '#f43f5e';
+            const pointColor = isPositive ? '#34d399' : '#fb7185';
+
+            timelineChartInstance.data.datasets[0].label = 'Net Profit ($)';
+            timelineChartInstance.data.datasets[0].data = profitValues;
+            timelineChartInstance.data.datasets[0].borderColor = color;
+            timelineChartInstance.data.datasets[0].backgroundColor = getGradient(ctx, true, isPositive);
+            timelineChartInstance.data.datasets[0].pointBackgroundColor = pointColor;
+
+            timelineChartInstance.options.plugins.tooltip.callbacks.label = function(context) {
+                const val = context.parsed.y;
+                if (val >= 0) {
+                    return '+$' + val.toFixed(2) + ' Net Profit';
+                } else {
+                    return '-$' + Math.abs(val).toFixed(2) + ' Net Loss';
+                }
+            };
+
+            if (titleEl) titleEl.innerHTML = '<span>💰</span> Profit Over Time';
+            if (subTitleEl) subTitleEl.textContent = 'Net Profit / PnL ($) Based on Live Valuations';
+        } else {
+            timelineChartInstance.data.datasets[0].label = 'Cumulative Invested ($)';
+            timelineChartInstance.data.datasets[0].data = timelineValues;
+            timelineChartInstance.data.datasets[0].borderColor = '#3b82f6';
+            timelineChartInstance.data.datasets[0].backgroundColor = getGradient(ctx, false, true);
+            timelineChartInstance.data.datasets[0].pointBackgroundColor = '#60a5fa';
+
+            timelineChartInstance.options.plugins.tooltip.callbacks.label = function(context) {
+                return '$' + context.parsed.y.toFixed(2) + ' Total Invested';
+            };
+
+            if (titleEl) titleEl.innerHTML = '<span>📈</span> Cumulative Investment Growth';
+            if (subTitleEl) subTitleEl.textContent = 'Total Capital Deployed ($)';
+        }
+
+        timelineChartInstance.update();
+    }
+
+    function initCharts() {
+        timelineLabels = {{ timeline_labels_json|safe }};
+        timelineValues = {{ timeline_values_json|safe }};
+        profitValues = {{ profit_values_json|safe }};
+        const breakdownLabels = {{ breakdown_labels_json|safe }};
+        const breakdownValues = {{ breakdown_values_json|safe }};
+
+        // Timeline Line Chart (Default to Profit Over Time)
+        const timelineCanvas = document.getElementById('timelineChart');
+        if (timelineCanvas && timelineLabels.length > 0) {
+            const ctx = timelineCanvas.getContext('2d');
+            const lastProfitVal = profitValues.length > 0 ? profitValues[profitValues.length - 1] : 0;
+            const isPositive = lastProfitVal >= 0;
+            const lineColor = isPositive ? '#10b981' : '#f43f5e';
+            const pointBg = isPositive ? '#34d399' : '#fb7185';
+
+            timelineChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timelineLabels,
+                    datasets: [{
+                        label: 'Net Profit ($)',
+                        data: profitValues,
+                        borderColor: lineColor,
+                        backgroundColor: getGradient(ctx, true, isPositive),
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: profitValues.length > 30 ? 0 : 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: pointBg,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.parsed.y;
+                                    return val >= 0 ? '+$' + val.toFixed(2) + ' Net Profit' : '-$' + Math.abs(val).toFixed(2) + ' Net Loss';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(75, 85, 99, 0.2)' },
+                            ticks: { color: '#9ca3af', maxTicksLimit: 8, font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { color: 'rgba(75, 85, 99, 0.2)' },
+                            ticks: {
+                                color: '#9ca3af',
+                                callback: function(value) {
+                                    return (value >= 0 ? '$' : '-$') + Math.abs(value).toFixed(0);
+                                },
+                                font: { size: 10 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Asset Breakdown Doughnut Chart
+        const breakdownCanvas = document.getElementById('breakdownChart');
+        if (breakdownCanvas && breakdownLabels.length > 0) {
+            const bCtx = breakdownCanvas.getContext('2d');
+            const palette = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#64748b'];
+
+            new Chart(bCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: breakdownLabels,
+                    datasets: [{
+                        data: breakdownValues,
+                        backgroundColor: palette.slice(0, breakdownLabels.length),
+                        borderColor: '#1f2937',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#d1d5db', boxWidth: 12, font: { size: 11 } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const val = context.parsed;
+                                    const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                    return ` ${context.label}: $${val.toFixed(2)} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        updateLocalTimes();
+        initCharts();
     });
 </script>
 {% endblock %}
