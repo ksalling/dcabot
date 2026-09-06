@@ -971,6 +971,158 @@ class PausedJobUpdateAndCardColorTest(TestCase):
         self.assertContains(response, 'Confirm & Execute Now')
 
 
+import json
+import io
+from decimal import Decimal
+from django.core.files.uploadedfile import SimpleUploadedFile
+from .services.trade_backup_service import TradeBackupService
+
+
+class TradeBackupAndImportTest(TestCase):
+    def setUp(self):
+        self.user_a = User.objects.create_user(username='usera', password='password123', email='usera@example.com')
+        self.user_b = User.objects.create_user(username='userb', password='password123', email='userb@example.com')
+        
+        self.exchange = SupportedExchange.objects.create(name='Binance', slug='binance')
+        self.account_a = ExchangeAccount.objects.create(
+            user=self.user_a,
+            exchange=self.exchange,
+            nickname='User A Account',
+            api_key='key_a',
+            api_secret='secret_a'
+        )
+        self.job_a = AutobuyJob.objects.create(
+            user=self.user_a,
+            account=self.account_a,
+            name='Daily BTC & ETH',
+            total_amount=Decimal('100.00'),
+            quote_currency='USDT',
+            interval='daily',
+            start_time=timezone.now()
+        )
+
+        # Create trades for User A
+        self.trade_1 = Trade.objects.create(
+            user=self.user_a,
+            job=self.job_a,
+            job_name=self.job_a.name,
+            exchange_name='Binance',
+            symbol='BTC/USDT',
+            order_id='ORD-1001',
+            order_type='limit',
+            amount_spent=Decimal('60.00'),
+            amount_received=Decimal('0.001'),
+            purchase_price=Decimal('60000.00'),
+            fee_incurred=Decimal('0.06'),
+            status='completed'
+        )
+        self.trade_2 = Trade.objects.create(
+            user=self.user_a,
+            job=self.job_a,
+            job_name=self.job_a.name,
+            exchange_name='Binance',
+            symbol='ETH/USDT',
+            order_id='ORD-1002',
+            order_type='market',
+            amount_spent=Decimal('40.00'),
+            amount_received=Decimal('0.015'),
+            purchase_price=Decimal('2666.6666'),
+            fee_incurred=Decimal('0.04'),
+            status='completed'
+        )
+
+    def test_export_trades_json(self):
+        export_data = TradeBackupService.export_trades_json(self.user_a)
+        self.assertEqual(export_data['schema_version'], '1.0')
+        self.assertEqual(export_data['exported_by'], self.user_a.username)
+        self.assertEqual(export_data['total_trades'], 2)
+        self.assertEqual(len(export_data['trades']), 2)
+
+        btc_trade = next(t for t in export_data['trades'] if t['symbol'] == 'BTC/USDT')
+        self.assertEqual(btc_trade['order_id'], 'ORD-1001')
+        self.assertEqual(btc_trade['amount_spent'], '60.00000000')
+        self.assertEqual(btc_trade['job_name'], 'Daily BTC & ETH')
+
+    def test_import_trades_json_to_second_account(self):
+        # Export from User A
+        export_data = TradeBackupService.export_trades_json(self.user_a)
+        json_bytes = json.dumps(export_data).encode('utf-8')
+        uploaded_file = SimpleUploadedFile("backup.json", json_bytes, content_type="application/json")
+
+        # Import into User B
+        self.assertEqual(Trade.objects.filter(user=self.user_b).count(), 0)
+        result = TradeBackupService.import_trades(self.user_b, uploaded_file)
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['imported_count'], 2)
+        self.assertEqual(result['skipped_duplicates'], 0)
+        self.assertEqual(result['total_records'], 2)
+
+        # Verify User B now has 2 trades
+        user_b_trades = Trade.objects.filter(user=self.user_b).order_by('order_id')
+        self.assertEqual(user_b_trades.count(), 2)
+        self.assertEqual(user_b_trades[0].order_id, 'ORD-1001')
+        self.assertEqual(user_b_trades[0].symbol, 'BTC/USDT')
+        self.assertEqual(user_b_trades[0].user, self.user_b)
+        self.assertEqual(user_b_trades[1].order_id, 'ORD-1002')
+
+    def test_import_trades_deduplication(self):
+        export_data = TradeBackupService.export_trades_json(self.user_a)
+        json_bytes = json.dumps(export_data).encode('utf-8')
+
+        # First import
+        file_1 = SimpleUploadedFile("backup.json", json_bytes, content_type="application/json")
+        result_1 = TradeBackupService.import_trades(self.user_b, file_1)
+        self.assertEqual(result_1['imported_count'], 2)
+
+        # Second import (exact duplicate file)
+        file_2 = SimpleUploadedFile("backup.json", json_bytes, content_type="application/json")
+        result_2 = TradeBackupService.import_trades(self.user_b, file_2)
+        self.assertTrue(result_2['success'])
+        self.assertEqual(result_2['imported_count'], 0)
+        self.assertEqual(result_2['skipped_duplicates'], 2)
+        self.assertEqual(Trade.objects.filter(user=self.user_b).count(), 2)
+
+    def test_import_trades_csv(self):
+        csv_content = (
+            "Timestamp,Job Name,Exchange,Pair,Side,Amount Spent,Amount Received,Price,Fee,Status,Order ID\n"
+            "2026-08-01 12:00:00,Manual CSV Job,Kraken,SOL/USD,buy,50.00,0.35,142.8571,0.05,Success,ORD-CSV-1\n"
+        ).encode('utf-8')
+        uploaded_file = SimpleUploadedFile("trades.csv", csv_content, content_type="text/csv")
+
+        result = TradeBackupService.import_trades(self.user_b, uploaded_file)
+        self.assertTrue(result['success'])
+        self.assertEqual(result['imported_count'], 1)
+        
+        imported_trade = Trade.objects.filter(user=self.user_b, order_id='ORD-CSV-1').first()
+        self.assertIsNotNone(imported_trade)
+        self.assertEqual(imported_trade.symbol, 'SOL/USD')
+        self.assertEqual(imported_trade.exchange_name, 'Kraken')
+        self.assertEqual(imported_trade.amount_spent, Decimal('50.00'))
+
+    def test_export_backup_view_http(self):
+        self.client.force_login(self.user_a)
+        response = self.client.get(reverse('trade_backup_export'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        self.assertIn('attachment; filename="moondrip_portfolio_backup_usera_', response['Content-Disposition'])
+
+        payload = json.loads(response.content.decode('utf-8'))
+        self.assertEqual(payload['schema_version'], '1.0')
+        self.assertEqual(len(payload['trades']), 2)
+
+    def test_import_view_http(self):
+        self.client.force_login(self.user_b)
+        export_data = TradeBackupService.export_trades_json(self.user_a)
+        json_bytes = json.dumps(export_data).encode('utf-8')
+        uploaded_file = SimpleUploadedFile("backup.json", json_bytes, content_type="application/json")
+
+        response = self.client.post(reverse('trade_import'), {'backup_file': uploaded_file}, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Trade.objects.filter(user=self.user_b).count(), 2)
+
+
+
 
 
 

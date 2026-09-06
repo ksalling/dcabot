@@ -741,6 +741,47 @@ def export_trades_csv(request):
 
     return response
 
+class TradeBackupExportView(LoginRequiredMixin, View):
+    def get(self, request):
+        import json
+        from django.utils import timezone
+        from .services.trade_backup_service import TradeBackupService
+        
+        backup_data = TradeBackupService.export_trades_json(request.user)
+        timestamp_str = timezone.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"moondrip_portfolio_backup_{request.user.username}_{timestamp_str}.json"
+        
+        response = HttpResponse(
+            json.dumps(backup_data, indent=2),
+            content_type='application/json'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+class TradeImportView(LoginRequiredMixin, View):
+    def post(self, request):
+        from .services.trade_backup_service import TradeBackupService
+        
+        uploaded_file = request.FILES.get('backup_file')
+        if not uploaded_file:
+            messages.error(request, "Please select a JSON backup or CSV file to import.")
+            return redirect('trade_list')
+
+        result = TradeBackupService.import_trades(request.user, uploaded_file)
+        
+        if result['success']:
+            if result['imported_count'] == 0 and result['skipped_duplicates'] == 0:
+                messages.warning(request, result.get('error_message') or "No trade records found in the uploaded file.")
+            else:
+                msg = f"Successfully imported {result['imported_count']} trade(s) into your portfolio."
+                if result['skipped_duplicates'] > 0:
+                    msg += f" ({result['skipped_duplicates']} duplicate(s) skipped)."
+                messages.success(request, msg)
+        else:
+            messages.error(request, f"Import failed: {result.get('error_message', 'Unknown error occurred.')}")
+
+        return redirect('trade_list')
+
 class RegisterView(CreateView):
     form_class = EmailUserCreationForm
     success_url = reverse_lazy('login')
