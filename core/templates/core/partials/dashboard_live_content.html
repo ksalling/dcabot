@@ -89,8 +89,13 @@
 
         <!-- Holdings / PnL Table -->
         <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
                 <h3 class="text-lg font-bold text-white">Portfolio Holdings</h3>
+                <a href="{% url 'trade_list' %}"
+                    class="text-blue-400 hover:text-blue-300 text-xs font-bold uppercase tracking-wide flex items-center gap-1.5 transition-colors">
+                    <span>View All Trades</span>
+                    <span class="text-xs">→</span>
+                </a>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left text-gray-400">
@@ -135,7 +140,7 @@
 
     </div>
 
-    <!-- Right Column (Accounts & Trades) -->
+    <!-- Right Column (Accounts & Activity Cards) -->
     <div class="space-y-8">
 
         <!-- Exchange Accounts -->
@@ -173,50 +178,153 @@
             </div>
         </div>
 
-        <!-- Recent Trades -->
-        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                <h3 class="text-lg font-bold text-white">Recent Trades</h3>
-                <a href="{% url 'trade_list' %}"
-                    class="text-blue-400 hover:text-blue-300 text-xs font-bold uppercase tracking-wide">View All</a>
+        <!-- Recent Activity Card Stack (Jobs / Trades) -->
+        <div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700/60">
+            <!-- Header Controls -->
+            <div class="px-5 py-3.5 border-b border-gray-700 flex flex-wrap items-center justify-between gap-3">
+                <h3 class="text-base font-bold text-white flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span id="recent-activity-title">Recent Jobs</span>
+                </h3>
+
+                <div class="flex items-center gap-2">
+                    <!-- Mode Toggle (Jobs vs Trades) -->
+                    <div class="inline-flex rounded-md bg-gray-900 p-0.5 border border-gray-700 text-xs shadow-inner">
+                        <button type="button" onclick="setRecentActivityMode('jobs')" id="mode-btn-jobs"
+                            class="px-2.5 py-1 rounded text-xs font-bold transition-all bg-blue-600 text-white shadow-sm cursor-pointer">
+                            Jobs
+                        </button>
+                        <button type="button" onclick="setRecentActivityMode('trades')" id="mode-btn-trades"
+                            class="px-2.5 py-1 rounded text-xs font-bold transition-all text-gray-400 hover:text-white cursor-pointer">
+                            Trades
+                        </button>
+                    </div>
+
+                    <!-- Limit Selector Dropdown -->
+                    <div class="flex items-center bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs">
+                        <label for="recent-cards-limit-select" class="text-gray-400 mr-1 text-[11px] font-medium">Show:</label>
+                        <select id="recent-cards-limit-select" onchange="setRecentCardsLimit(this.value)"
+                            class="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer">
+                            <option value="3" class="bg-gray-800 text-white" selected>3</option>
+                            <option value="6" class="bg-gray-800 text-white">6</option>
+                            <option value="10" class="bg-gray-800 text-white">10</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-gray-400">
-                    <thead class="text-xs text-gray-500 uppercase bg-gray-900/50">
-                        <tr>
-                            <th class="px-4 py-3">Time</th>
-                            <th class="px-4 py-3">Pair</th>
-                            <th class="px-4 py-3 text-right">Purchase Price</th>
-                            <th class="px-4 py-3 text-right">Profit / Loss</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in recent_trades %}
-                        <tr class="border-b border-gray-700 hover:bg-gray-700/50 transition-colors">
-                            <td class="px-4 py-3">
-                                <span class="local-datetime text-xs whitespace-nowrap"
-                                    data-utc="{{ item.timestamp|date:'c' }}">
-                                    {{ item.timestamp|date:"M d H:i" }}
+
+            <!-- Stack 1: Grouped Recent Jobs Cards (Default View) -->
+            <div id="recent-jobs-stack" class="p-4 space-y-3">
+                {% for group in recent_jobs %}
+                <div class="job-group-card bg-gray-900/90 border border-gray-700/80 hover:border-gray-500 rounded-xl p-4 transition-all shadow-md space-y-3" data-card-idx="{{ forloop.counter0 }}">
+                    <!-- Top Line: Lightning Icon + Job Name & Timestamp -->
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 min-w-0">
+                            <span class="text-[#f97316] text-xs leading-none">⚡</span>
+                            <span class="text-base font-bold text-[#f5eedc] tracking-tight truncate" title="{{ group.job_name }}">{{ group.job_name }}</span>
+                        </div>
+                        <span class="local-datetime text-xs text-gray-400 font-normal shrink-0" data-utc="{{ group.timestamp|date:'c' }}">
+                            {{ group.timestamp|date:"M j, g:i A T" }}
+                        </span>
+                    </div>
+
+                    <!-- Connected Node Tree for Trades -->
+                    <div class="relative pl-0.5 space-y-2.5 my-1">
+                        <!-- Vertical connector line if more than 1 trade -->
+                        {% if group.trades|length > 1 %}
+                        <div class="absolute left-[7px] top-[10px] bottom-[10px] w-[1px] bg-gray-600/70 -z-0"></div>
+                        {% endif %}
+
+                        {% for sub in group.trades %}
+                        <div class="relative z-10 flex items-center justify-between">
+                            <!-- Left: Coin Avatar + Symbol + Quantity -->
+                            <div class="flex items-center gap-2">
+                                <div class="w-[11px] h-[11px] rounded-full flex items-center justify-center shrink-0 shadow-sm ring-1 ring-gray-900 {{ sub.coin_icon.bg_class }}">
+                                    <span class="leading-none text-[6px] select-none">{{ sub.coin_icon.label }}</span>
+                                </div>
+                                <div class="flex items-baseline gap-1.5">
+                                    <span class="font-bold text-white text-sm">{{ sub.symbol }}</span>
+                                    <span class="text-gray-400 font-mono text-xs">({{ sub.amount_received|stringformat:".6f" }})</span>
+                                </div>
+                            </div>
+
+                            <!-- Right: Purchase Price + PnL -->
+                            <div class="text-right flex items-center gap-2 font-mono">
+                                <span class="text-white text-sm font-semibold">${{ sub.purchase_price|stringformat:".2f" }}</span>
+                                <span class="text-xs font-bold {% if sub.pnl >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                    {% if sub.pnl >= 0 %}+{% endif %}${{ sub.pnl|stringformat:".2f" }}
                                 </span>
-                            </td>
-                            <td class="px-4 py-3 font-semibold text-white">
-                                {{ item.symbol }}
-                            </td>
-                            <td class="px-4 py-3 text-right text-gray-200 font-mono text-xs">
-                                ${{ item.purchase_price|stringformat:".2f" }} <span class="text-gray-400 text-[10px]">{{ item.quote_currency }}</span>
-                            </td>
-                            <td class="px-4 py-3 text-right font-medium text-xs font-mono {% if item.pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                                {% if item.pnl >= 0 %}+{% endif %}${{ item.pnl|stringformat:".2f" }}
-                                <span class="text-[10px] opacity-80">({% if item.pnl_percent >= 0 %}+{% endif %}{{ item.pnl_percent|stringformat:".2f" }}%)</span>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="4" class="px-6 py-8 text-center text-gray-500">No trades yet.</td>
-                        </tr>
+                            </div>
+                        </div>
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </div>
+
+                    <!-- Footer / Summary Section -->
+                    <div class="pt-2.5 border-t border-gray-800/90 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-gray-400 text-xs font-normal">
+                                Total Spent: <strong class="text-[#f5eedc] font-mono font-bold text-sm ml-1">${{ group.total_spent|stringformat:".2f" }}</strong>
+                            </span>
+                            <span class="font-mono font-bold text-xs {% if group.total_pnl >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                {% if group.total_pnl >= 0 %}+{% endif %}${{ group.total_pnl|stringformat:".2f" }} <span class="text-[11px] font-normal">({% if group.total_pnl_percent >= 0 %}+{% endif %}{{ group.total_pnl_percent|stringformat:".1f" }}%)</span>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-gray-500 font-medium">
+                            <span>{{ group.trades|length }} trade{% if group.trades|length > 1 %}s{% endif %}</span>
+                            <span>Fee: ${{ group.total_fees|stringformat:".4f" }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center py-8 text-gray-500 text-sm">No recent jobs executed yet.</div>
+                {% endfor %}
+            </div>
+
+            <!-- Stack 2: Individual Compact Trade Cards -->
+            <div id="recent-trades-stack" class="p-4 space-y-3 hidden">
+                {% for item in recent_trades %}
+                <div class="trade-card bg-gray-900/90 border border-gray-700/80 hover:border-gray-500 rounded-xl p-4 transition-all shadow-md space-y-3" data-card-idx="{{ forloop.counter0 }}">
+                    <!-- Top Line: Job Name & Timestamp -->
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400 truncate max-w-[190px]" title="{{ item.job_name }}">
+                            <span class="text-[#f97316] text-xs leading-none">⚡</span>
+                            <span class="truncate text-white font-bold">{{ item.job_name }}</span>
+                        </span>
+                        <span class="local-datetime text-xs text-gray-400 font-normal shrink-0" data-utc="{{ item.timestamp|date:'c' }}">
+                            {{ item.timestamp|date:"M j, g:i A T" }}
+                        </span>
+                    </div>
+
+                    <!-- Middle Line: Coin Avatar + Symbol + Price / PnL -->
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-[11px] h-[11px] rounded-full flex items-center justify-center shrink-0 shadow-sm ring-1 ring-gray-900 {{ item.coin_icon.bg_class }}">
+                                <span class="leading-none text-[6px] select-none">{{ item.coin_icon.label }}</span>
+                            </div>
+                            <div class="flex items-baseline gap-1.5">
+                                <span class="font-bold text-white text-sm">{{ item.symbol }}</span>
+                                <span class="text-gray-400 font-mono text-xs">({{ item.amount_received|stringformat:".6f" }})</span>
+                            </div>
+                        </div>
+                        <div class="text-right flex items-center gap-2 font-mono">
+                            <span class="text-white text-sm font-semibold">${{ item.purchase_price|stringformat:".2f" }}</span>
+                            <span class="text-xs font-bold {% if item.pnl >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                {% if item.pnl >= 0 %}+{% endif %}${{ item.pnl|stringformat:".2f" }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Footer Meta -->
+                    <div class="pt-2.5 border-t border-gray-800/90 flex items-center justify-between text-xs text-gray-500">
+                        <span class="text-gray-400 text-xs">
+                            Spent: <strong class="text-[#f5eedc] font-mono font-bold">${{ item.amount_spent|stringformat:".2f" }}</strong> {{ item.quote_currency }}
+                        </span>
+                        <span>Fee: ${{ item.fee_incurred|stringformat:".4f" }}</span>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center py-8 text-gray-500 text-sm">No recent trades yet.</div>
+                {% endfor %}
             </div>
         </div>
 

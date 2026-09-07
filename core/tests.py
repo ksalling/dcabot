@@ -970,6 +970,38 @@ class PausedJobUpdateAndCardColorTest(TestCase):
         self.assertContains(response, 'Execute Immediate Trade?')
         self.assertContains(response, 'Confirm & Execute Now')
 
+    def test_dashboard_renders_holdings_link_and_recent_activity_cards(self):
+        # Create test trades
+        Trade.objects.create(
+            user=self.user,
+            job=self.job,
+            job_name='DCA BTC Job',
+            exchange_name='Binance',
+            symbol='BTC/USDT',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0.002'),
+            purchase_price=Decimal('50000.00'),
+            fee_incurred=Decimal('0.10'),
+            status='completed'
+        )
+
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        # Check View All Trades in holdings header
+        self.assertContains(response, 'View All Trades')
+        self.assertContains(response, 'Portfolio Holdings')
+        # Check Activity Card stack
+        self.assertContains(response, 'id="recent-trades-stack"')
+        self.assertContains(response, 'id="recent-jobs-stack"')
+        self.assertContains(response, 'id="recent-cards-limit-select"')
+        self.assertContains(response, 'value="3"')
+        self.assertContains(response, 'value="6"')
+        self.assertContains(response, 'value="10"')
+        self.assertIn('recent_trades', response.context)
+        self.assertIn('recent_jobs', response.context)
+        self.assertEqual(len(response.context['recent_trades']), 1)
+        self.assertEqual(len(response.context['recent_jobs']), 1)
+
 
 import json
 import io

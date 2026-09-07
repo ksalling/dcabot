@@ -37,6 +37,33 @@ class CustomPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
         messages.success(self.request, "Password changed successfully.")
         return super().form_valid(form)
 
+def get_coin_icon_info(symbol):
+    base_coin = symbol.split('/')[0].upper() if '/' in symbol else symbol.upper()
+    if base_coin == 'BTC':
+        return {'bg_class': 'bg-[#f7931a] text-white font-bold', 'label': '₿'}
+    elif base_coin == 'ETH':
+        return {'bg_class': 'bg-[#627eea] text-white font-bold', 'label': 'Ξ'}
+    elif base_coin == 'SOL':
+        return {'bg_class': 'bg-gradient-to-tr from-[#9945FF] to-[#14F195] text-black font-extrabold', 'label': '≡'}
+    elif base_coin == 'DOGE':
+        return {'bg_class': 'bg-[#c2a633] text-white font-bold', 'label': 'Ð'}
+    elif base_coin in ['USDT', 'USDC', 'USD']:
+        return {'bg_class': 'bg-[#26a17b] text-white font-bold', 'label': '$'}
+    elif base_coin == 'ADA':
+        return {'bg_class': 'bg-[#0033ad] text-white font-bold', 'label': '₳'}
+    elif base_coin == 'XRP':
+        return {'bg_class': 'bg-black text-white border border-gray-600 font-bold', 'label': '✕'}
+    elif base_coin == 'AVAX':
+        return {'bg_class': 'bg-[#e84142] text-white font-bold', 'label': '▲'}
+    elif base_coin == 'DOT':
+        return {'bg_class': 'bg-[#e6007a] text-white font-bold', 'label': '●'}
+    elif base_coin == 'LINK':
+        return {'bg_class': 'bg-[#375bd2] text-white font-bold', 'label': '⬡'}
+    elif base_coin == 'LTC':
+        return {'bg_class': 'bg-[#a6a9aa] text-white font-bold', 'label': 'Ł'}
+    else:
+        return {'bg_class': 'bg-gray-800 text-gray-200 border border-gray-600 font-semibold', 'label': base_coin[:2]}
+
 def get_dashboard_context(user):
     from .services.portfolio import PortfolioService
     
@@ -47,7 +74,7 @@ def get_dashboard_context(user):
     # Data Fetching
     jobs = AutobuyJob.objects.filter(user=user).order_by('-created_at')
     accounts = ExchangeAccount.objects.filter(user=user)
-    recent_trades_qs = Trade.objects.filter(user=user).order_by('-timestamp')[:10] # Show 10
+    recent_trades_qs = Trade.objects.filter(user=user).order_by('-timestamp')[:30] # Fetch up to 30 for card stacks
     
     price_map = {h['symbol']: h['current_price'] for h in portfolio_data.get('holdings', [])}
     
@@ -58,25 +85,69 @@ def get_dashboard_context(user):
         current_value = (trade.amount_received * current_price) if current_price else trade.amount_spent
         pnl = current_value - trade.amount_spent - trade.fee_incurred
         pnl_percent = (pnl / trade.amount_spent) * 100 if trade.amount_spent > 0 else 0
+        coin_icon = get_coin_icon_info(trade.symbol)
         
         recent_trades.append({
             'id': trade.id,
             'timestamp': trade.timestamp,
+            'job_name': trade.job_name,
+            'exchange_name': trade.exchange_name,
             'symbol': trade.symbol,
             'quote_currency': quote_currency,
+            'order_type': trade.order_type,
             'purchase_price': trade.purchase_price,
             'amount_received': trade.amount_received,
             'amount_spent': trade.amount_spent,
+            'fee_incurred': trade.fee_incurred,
             'current_price': current_price,
             'current_value': current_value,
             'pnl': pnl,
             'pnl_percent': pnl_percent,
+            'coin_icon': coin_icon,
         })
+    
+    # Group trades by Job execution run
+    recent_jobs = []
+    current_group = None
+    for trade_item in recent_trades:
+        minute_ts = trade_item['timestamp'].strftime('%Y-%m-%d %H:%M') if trade_item['timestamp'] else ''
+        group_key = (trade_item['job_name'], trade_item['exchange_name'], minute_ts)
+        
+        if current_group and current_group['key'] == group_key:
+            current_group['trades'].append(trade_item)
+            current_group['total_spent'] += trade_item['amount_spent']
+            current_group['total_fees'] += trade_item['fee_incurred']
+            current_group['total_current_value'] += trade_item['current_value']
+            current_group['total_pnl'] += trade_item['pnl']
+        else:
+            if current_group:
+                if current_group['total_spent'] > 0:
+                    current_group['total_pnl_percent'] = (current_group['total_pnl'] / current_group['total_spent']) * 100
+                recent_jobs.append(current_group)
+            
+            current_group = {
+                'key': group_key,
+                'job_name': trade_item['job_name'],
+                'exchange_name': trade_item['exchange_name'],
+                'timestamp': trade_item['timestamp'],
+                'trades': [trade_item],
+                'total_spent': trade_item['amount_spent'],
+                'total_fees': trade_item['fee_incurred'],
+                'total_current_value': trade_item['current_value'],
+                'total_pnl': trade_item['pnl'],
+                'total_pnl_percent': 0.0,
+            }
+            
+    if current_group:
+        if current_group['total_spent'] > 0:
+            current_group['total_pnl_percent'] = (current_group['total_pnl'] / current_group['total_spent']) * 100
+        recent_jobs.append(current_group)
     
     return {
         'jobs': jobs,
         'accounts': accounts,
         'recent_trades': recent_trades,
+        'recent_jobs': recent_jobs,
         'portfolio': portfolio_data
     }
 

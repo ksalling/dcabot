@@ -178,6 +178,83 @@
         });
     }
 
+    function applyRecentActivitySettings() {
+        const savedLimit = localStorage.getItem('moondrip_recent_cards_limit') || '3';
+        const savedMode = localStorage.getItem('moondrip_recent_activity_mode') || 'jobs';
+
+        const limitSelect = document.getElementById('recent-cards-limit-select');
+        if (limitSelect) {
+            limitSelect.value = savedLimit;
+        }
+
+        const titleEl = document.getElementById('recent-activity-title');
+        if (titleEl) {
+            titleEl.textContent = savedMode === 'jobs' ? 'Recent Jobs' : 'Recent Trades';
+        }
+
+        const limit = parseInt(savedLimit, 10);
+        const tradesStack = document.getElementById('recent-trades-stack');
+        const jobsStack = document.getElementById('recent-jobs-stack');
+        const btnTrades = document.getElementById('mode-btn-trades');
+        const btnJobs = document.getElementById('mode-btn-jobs');
+
+        if (savedMode === 'jobs') {
+            if (tradesStack) tradesStack.classList.add('hidden');
+            if (jobsStack) jobsStack.classList.remove('hidden');
+            if (btnTrades) {
+                btnTrades.className = 'px-2.5 py-1 rounded text-xs font-bold transition-all text-gray-400 hover:text-white cursor-pointer';
+            }
+            if (btnJobs) {
+                btnJobs.className = 'px-2.5 py-1 rounded text-xs font-bold transition-all bg-blue-600 text-white shadow-sm cursor-pointer';
+            }
+        } else {
+            if (jobsStack) jobsStack.classList.add('hidden');
+            if (tradesStack) tradesStack.classList.remove('hidden');
+            if (btnJobs) {
+                btnJobs.className = 'px-2.5 py-1 rounded text-xs font-bold transition-all text-gray-400 hover:text-white cursor-pointer';
+            }
+            if (btnTrades) {
+                btnTrades.className = 'px-2.5 py-1 rounded text-xs font-bold transition-all bg-blue-600 text-white shadow-sm cursor-pointer';
+            }
+        }
+
+        // Limit trade cards
+        if (tradesStack) {
+            const tradeCards = tradesStack.querySelectorAll('.trade-card');
+            tradeCards.forEach(card => {
+                const idx = parseInt(card.getAttribute('data-card-idx'), 10);
+                if (idx < limit) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+        }
+
+        // Limit job cards
+        if (jobsStack) {
+            const jobCards = jobsStack.querySelectorAll('.job-group-card');
+            jobCards.forEach(card => {
+                const idx = parseInt(card.getAttribute('data-card-idx'), 10);
+                if (idx < limit) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+        }
+    }
+
+    window.setRecentActivityMode = function(mode) {
+        localStorage.setItem('moondrip_recent_activity_mode', mode);
+        applyRecentActivitySettings();
+    };
+
+    window.setRecentCardsLimit = function(limit) {
+        localStorage.setItem('moondrip_recent_cards_limit', limit);
+        applyRecentActivitySettings();
+    };
+
     function initDashboard() {
         const select = document.getElementById('auto-refresh-select');
         if (select) {
@@ -198,6 +275,7 @@
         updateCountdownDisplay();
 
         updateLocalTimes();
+        applyRecentActivitySettings();
         planScheduledTradeRefresh();
     }
 
@@ -226,6 +304,7 @@
     document.addEventListener('DOMContentLoaded', initDashboard);
     document.body.addEventListener('htmx:afterSwap', function(evt) {
         updateLocalTimes();
+        applyRecentActivitySettings();
         planScheduledTradeRefresh();
     });
 </script>
