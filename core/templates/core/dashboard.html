@@ -132,31 +132,30 @@
         }
 
         const jobElements = document.querySelectorAll('[data-next-run]');
-        let earliestTime = null;
+        let nextExecutionDelay = null;
         const now = Date.now();
 
         jobElements.forEach(el => {
             const isoTime = el.getAttribute('data-next-run');
             if (isoTime) {
                 const timeMs = new Date(isoTime).getTime();
-                if (timeMs > now) {
-                    if (earliestTime === null || timeMs < earliestTime) {
-                        earliestTime = timeMs;
+                const diff = timeMs - now;
+                // If scheduled in the future or due in the last 60 seconds
+                if (diff > -60000 && diff < 86400000) {
+                    const delay = Math.max(1000, diff + 5000);
+                    if (nextExecutionDelay === null || delay < nextExecutionDelay) {
+                        nextExecutionDelay = delay;
                     }
                 }
             }
         });
 
-        if (earliestTime !== null) {
-            // Buffer to allow the scheduler worker to place orders and receive exchange confirmations (approx 5-6s)
-            const delayMs = Math.max(1000, (earliestTime - now) + 6000);
-            if (delayMs < 86400000) { // Schedule if within 24 hours
-                scheduledTradeTimer = setTimeout(() => {
-                    triggerDashboardRefresh();
-                    // Follow-up refresh 6s later to catch multi-token baskets with multiple exchange roundtrips
-                    setTimeout(triggerDashboardRefresh, 6000);
-                }, delayMs);
-            }
+        if (nextExecutionDelay !== null) {
+            scheduledTradeTimer = setTimeout(() => {
+                triggerDashboardRefresh();
+                // Follow-up refresh 6s later to catch multi-token baskets with multiple exchange roundtrips
+                setTimeout(triggerDashboardRefresh, 6000);
+            }, nextExecutionDelay);
         }
     }
 
@@ -277,6 +276,22 @@
         updateLocalTimes();
         applyRecentActivitySettings();
         planScheduledTradeRefresh();
+        checkLiveOrdersPolling();
+    }
+
+    let liveOrdersPollingTimer = null;
+    function checkLiveOrdersPolling() {
+        if (liveOrdersPollingTimer) {
+            clearInterval(liveOrdersPollingTimer);
+            liveOrdersPollingTimer = null;
+        }
+        // If there are open orders resting on the book, poll every 8 seconds to detect fills
+        const hasOpenOrders = document.querySelector('#open-orders-box-container .open-order-btn') !== null;
+        if (hasOpenOrders) {
+            liveOrdersPollingTimer = setInterval(() => {
+                triggerDashboardRefresh();
+            }, 8000);
+        }
     }
 
     window.handlePauseJobClick = function(btn) {
@@ -306,6 +321,10 @@
         updateLocalTimes();
         applyRecentActivitySettings();
         planScheduledTradeRefresh();
+        checkLiveOrdersPolling();
+    });
+    document.body.addEventListener('refreshDashboard', function(evt) {
+        triggerDashboardRefresh();
     });
 </script>
 {% endblock %}

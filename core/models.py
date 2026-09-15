@@ -51,6 +51,13 @@ class AutobuyJob(models.Model):
     
     interval = models.CharField(max_length=20, choices=INTERVAL_CHOICES, default='daily')
     
+    ORDER_TYPE_CHOICES = [
+        ('limit', _('Limit (Maker - Lower Fees)')),
+        ('market', _('Market (Taker)')),
+    ]
+    order_type = models.CharField(max_length=20, choices=ORDER_TYPE_CHOICES, default='limit', help_text=_("Maker limit orders sit on the order book and capture lower exchange fees"))
+    limit_order_timeout_minutes = models.PositiveIntegerField(default=15, help_text=_("Minutes to wait before canceling and replacing unfilled limit orders"))
+    
     is_active = models.BooleanField(default=False)
     
     start_time = models.DateTimeField()
@@ -132,7 +139,11 @@ class Trade(models.Model):
     exchange_name = models.CharField(max_length=100)
     symbol = models.CharField(max_length=20) # e.g. BTC/USDT
     job_name = models.CharField(max_length=100, default="Unknown Job", help_text="Snapshot of job name at time of trade")
-    order_type = models.CharField(max_length=20, default='market')
+    ORDER_TYPE_CHOICES = [
+        ('limit', _('Limit (Maker)')),
+        ('market', _('Market (Taker)')),
+    ]
+    order_type = models.CharField(max_length=20, choices=ORDER_TYPE_CHOICES, default='market')
     
     amount_spent = models.DecimalField(max_digits=20, decimal_places=8)
     amount_received = models.DecimalField(max_digits=20, decimal_places=8)
@@ -142,7 +153,13 @@ class Trade(models.Model):
     order_id = models.CharField(max_length=100, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     
-    status = models.CharField(max_length=20, default='completed')
+    STATUS_CHOICES = [
+        ('completed', _('Completed')),
+        ('open', _('Open')),
+        ('canceled', _('Canceled')),
+        ('partially_filled', _('Partially Filled')),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='completed')
 
     def __str__(self):
         return f"Bought {self.amount_received} {self.symbol} on {self.timestamp}"

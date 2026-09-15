@@ -119,26 +119,44 @@ class ExchangeAccountEditForm(forms.ModelForm):
 class AutobuyJobForm(forms.ModelForm):
     class Meta:
         model = AutobuyJob
-        fields = ['name', 'account', 'total_amount', 'quote_currency', 'interval', 'start_time', 'end_date']
+        fields = ['name', 'account', 'total_amount', 'quote_currency', 'order_type', 'limit_order_timeout_minutes', 'interval', 'start_time', 'end_date']
         widgets = {
             'start_time': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'total_amount': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
             'quote_currency': forms.Select(choices=AutobuyJob.QUOTE_CURRENCIES),
+            'order_type': forms.Select(choices=AutobuyJob.ORDER_TYPE_CHOICES),
+            'limit_order_timeout_minutes': forms.NumberInput(attrs={'min': '5', 'max': '1440', 'step': '1'}),
         }
         labels = {
             'name': 'Job Name',
             'account': 'Exchange Account',
             'total_amount': 'Total Investment Amount',
             'quote_currency': 'Quote Currency (e.g. USDT)',
+            'order_type': 'Order Execution Type',
+            'limit_order_timeout_minutes': 'Limit Order Timeout (Minutes)',
             'interval': 'Run Frequency',
             'start_time': 'Start Date & Time',
             'end_date': 'End Date & Time (Optional)',
+        }
+        help_texts = {
+            'order_type': 'Maker Limit orders capture lower exchange fees (recommended).',
+            'limit_order_timeout_minutes': 'Minutes to wait before canceling and re-pricing unfilled limit orders at the new bid.',
         }
 
     def __init__(self, user, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['account'].queryset = ExchangeAccount.objects.filter(user=user)
+        self.fields['order_type'].required = False
+        self.fields['limit_order_timeout_minutes'].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('order_type'):
+            cleaned_data['order_type'] = 'limit'
+        if not cleaned_data.get('limit_order_timeout_minutes'):
+            cleaned_data['limit_order_timeout_minutes'] = 15
+        return cleaned_data
 
 class JobTokenForm(forms.ModelForm):
     class Meta:

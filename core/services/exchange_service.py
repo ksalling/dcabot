@@ -220,6 +220,49 @@ class ExchangeService:
             self.log(f"Error fetching price for {symbol}: {str(e)}", level='WARNING')
             return None
 
+    def get_bid_price(self, symbol):
+        """
+        Fetch the current top bid price for a given symbol.
+        Falls back to last/close price if bid is not available.
+        """
+        try:
+            ticker = self.exchange.fetch_ticker(symbol)
+            bid = ticker.get('bid')
+            if bid and float(bid) > 0:
+                return float(bid)
+            # Fallback to last/close price if bid not explicitly provided
+            price = ticker.get('last') or ticker.get('close') or ticker.get('ask')
+            return float(price) if price else None
+        except Exception as e:
+            self.log(f"Error fetching bid price for {symbol}: {str(e)}", level='WARNING')
+            return None
+
+    def get_maker_limit_price(self, symbol):
+        """
+        Fetch current ticker and calculate a maker limit buy price guaranteed to sit
+        on the bid side of the order book and not cross into the ask (avoiding taker fees).
+        """
+        try:
+            ticker = self.exchange.fetch_ticker(symbol)
+            bid = float(ticker.get('bid') or 0)
+            ask = float(ticker.get('ask') or 0)
+            last = float(ticker.get('last') or ticker.get('close') or 0)
+
+            if bid > 0:
+                if ask > 0 and bid >= ask:
+                    # If spread is crossed or locked, set limit price slightly below ask
+                    return ask * 0.9999
+                return bid
+            elif ask > 0:
+                # If no top bid available, set limit price 0.05% below ask
+                return ask * 0.9995
+            elif last > 0:
+                return last * 0.9995
+            return None
+        except Exception as e:
+            self.log(f"Error calculating maker limit price for {symbol}: {str(e)}", level='WARNING')
+            return None
+
     def validate_order_size(self, symbol, allocation_amount, quote_currency):
         """
         Verify that the allocation meets the exchange's minimum order size (min cost or min amount).
@@ -329,3 +372,100 @@ class ExchangeService:
         except Exception as e:
             self.log(f"Order failed for {symbol}: {str(e)}", level='ERROR', job=job)
             raise
+
+    def place_maker_limit_buy_order(self, symbol, amount, job=None, quote_currency=None, max_retries=2):
+        """
+        Place a maker limit buy order using the current bid price and postOnly flag.
+        This ensures the order sits on the order book as a maker rather than taking liquidity,
+        capturing lower maker fees on Kraken, Binance, etc.
+        If the post-only order is rejected/canceled because the spread crossed, it automatically
+        retries with the updated bid price.
+        """
+        if '/' not in symbol:
+            if job and hasattr(job, 'quote_currency'):
+                symbol = f"{symbol.upper()}/{job.quote_currency.upper()}"
+            elif quote_currency:
+                symbol = f"{symbol.upper()}/{quote_currency.upper()}"
+            else:
+                symbol = symbol.upper()
+
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                bid_price = self.get_maker_limit_price(symbol) or self.get_bid_price(symbol)
+                if not bid_price or float(bid_price) <= 0:
+                    raise ValueError(f"Could not fetch valid bid price for {symbol}")
+
+                # Calculate base amount: Quote Amount / Limit Price
+                base_amount = float(amount) / float(bid_price)
+
+                # Apply exchange precision rules
+                market = self.exchange.market(symbol)
+                base_amount_precise = self.exchange.amount_to_precision(symbol, base_amount)
+                bid_price_precise = self.exchange.price_to_precision(symbol, bid_price)
+
+                self.log(f"Attempting maker limit buy of ~{base_amount_precise} {symbol} @ {bid_price_precise} (Quote: {amount}, postOnly=True, attempt {attempt + 1})", job=job)
+
+                # Strictly post-only limit order (maps to oflags='post' on Kraken)
+                params = {'postOnly': True}
+                order = self.exchange.create_limit_buy_order(
+                    symbol, 
+                    float(base_amount_precise), 
+                    float(bid_price_precise), 
+                    params
+                )
+
+                if order and order.get('id'):
+                    status = order.get('status')
+                    if not status:
+                        try:
+                            import time
+                            time.sleep(0.5)
+                            fetched = self.exchange.fetch_order(order['id'], symbol)
+                            if fetched:
+                                order = fetched
+                        except Exception:
+                            pass
+
+                    # If exchange immediately canceled post-only order (spread crossed), retry with fresh price
+                    if order.get('status') == 'canceled' and attempt < max_retries:
+                        self.log(f"Post-only order {order.get('id')} for {symbol} was immediately canceled by exchange (crossed book). Retrying with fresh maker price...", level='WARNING', job=job)
+                        import time
+                        time.sleep(0.5)
+                        continue
+
+                if order is None:
+                    raise ValueError("Exchange API returned no data for the limit order.")
+
+                self.log(f"Maker Limit Order placed: {order.get('id', 'Unknown ID')} (Status: {order.get('status', 'unknown')})", job=job)
+                return order
+
+            except Exception as e:
+                last_error = e
+                self.log(f"Post-only limit order attempt {attempt + 1} failed for {symbol}: {str(e)}", level='WARNING' if attempt < max_retries else 'ERROR', job=job)
+                if attempt == max_retries:
+                    raise last_error
+                import time
+                time.sleep(0.5)
+
+    def cancel_order_safe(self, order_id, symbol, job=None):
+        """
+        Safely cancel an open order on the exchange.
+        Returns the exchange response or None if already canceled/closed.
+        """
+        try:
+            self.log(f"Canceling order {order_id} for {symbol}", job=job)
+            return self.exchange.cancel_order(order_id, symbol)
+        except Exception as e:
+            self.log(f"Notice canceling order {order_id} for {symbol}: {str(e)}", level='WARNING', job=job)
+            return None
+
+    def fetch_order_status(self, order_id, symbol, job=None):
+        """
+        Fetch the current status and fill details of an order from the exchange.
+        """
+        try:
+            return self.exchange.fetch_order(order_id, symbol)
+        except Exception as e:
+            self.log(f"Error fetching status for order {order_id} ({symbol}): {str(e)}", level='WARNING', job=job)
+            return None

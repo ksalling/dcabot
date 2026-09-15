@@ -52,6 +52,7 @@
                         <th class="px-6 py-3">Exchange</th>
                         <th class="px-6 py-3">Pair</th>
                         <th class="px-6 py-3">Type</th>
+                        <th class="px-6 py-3">Status</th>
                         <th class="px-6 py-3 text-right">Amount</th>
                         <th class="px-6 py-3 text-right">Price</th>
                         <th class="px-6 py-3 text-right">Cost</th>
@@ -69,7 +70,16 @@
                         <td class="px-6 py-4 font-medium text-white">{{ trade.job_name }}</td>
                         <td class="px-6 py-4">{{ trade.exchange_name }}</td>
                         <td class="px-6 py-4 font-medium text-blue-400">{{ trade.symbol }}</td>
-                        <td class="px-6 py-4 uppercase text-xs font-bold">{{ trade.order_type }}</td>
+                        <td class="px-6 py-4 text-xs font-bold uppercase">
+                            <span class="px-1.5 py-0.5 rounded {% if trade.order_type == 'limit' %}bg-blue-900/50 text-blue-300 border border-blue-700/50{% else %}bg-gray-800 text-gray-300 border border-gray-600{% endif %}">
+                                {{ trade.order_type }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-xs font-bold">
+                            <span class="px-1.5 py-0.5 rounded {% if trade.status == 'completed' %}bg-emerald-900/50 text-emerald-300 border border-emerald-700/50{% elif trade.status == 'open' %}bg-yellow-900/50 text-yellow-300 border border-yellow-700/50{% else %}bg-red-900/50 text-red-300 border border-red-700/50{% endif %}">
+                                {{ trade.status|capfirst }}
+                            </span>
+                        </td>
                         <td class="px-6 py-4 text-right">{{ trade.amount_received|stringformat:".6f" }}</td>
                         <td class="px-6 py-4 text-right">${{ trade.purchase_price|stringformat:".2f" }}</td>
                         <td class="px-6 py-4 text-right">${{ trade.amount_spent|stringformat:".2f" }}</td>

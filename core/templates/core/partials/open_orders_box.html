@@ -1,0 +1,146 @@
+<div id="open-orders-box-container" class="space-y-4">
+    {% if open_trades %}
+    <div class="bg-gradient-to-r from-blue-950/70 via-gray-800 to-gray-800 border border-blue-500/40 rounded-xl shadow-xl p-5 mb-6">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-700/70">
+            <div class="flex items-center gap-3">
+                <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                </span>
+                <h3 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
+                    <span>Active Open Orders</span>
+                    <span class="bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold px-2 py-0.5 rounded-full">
+                        {{ open_trades|length }} Resting
+                    </span>
+                </h3>
+            </div>
+            <div class="text-xs text-gray-400 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span>Maker limit orders resting on the book to capture lower fees.</span>
+            </div>
+        </div>
+
+        <!-- Orders List -->
+        <div class="mt-4 space-y-3">
+            {% for ot in open_trades %}
+            <div class="bg-gray-900/80 border border-gray-700/80 hover:border-gray-600 rounded-lg p-4 transition-all duration-200" id="open-order-row-{{ ot.id }}">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    
+                    <!-- Left: Coin Info & Details -->
+                    <div class="flex items-start sm:items-center gap-3.5">
+                        <!-- Coin Icon -->
+                        <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs shadow-md shrink-0 {{ ot.coin_icon.bg_class }}">
+                            {{ ot.coin_icon.label }}
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-bold text-white text-sm sm:text-base">{{ ot.symbol }}</span>
+                                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-900/50 text-blue-300 border border-blue-700/50">
+                                    Limit Maker
+                                </span>
+                                <span class="text-xs text-gray-400">on {{ ot.exchange_name }}</span>
+                                <span class="text-xs text-gray-500">({{ ot.job_name }})</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-300">
+                                <div>
+                                    <span class="text-gray-400">Order ID:</span> 
+                                    <span class="font-mono text-gray-200">#{{ ot.order_id|truncatechars:16 }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-400">Bid Price:</span> 
+                                    <span class="font-semibold text-emerald-400">${{ ot.purchase_price|stringformat:".2f" }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-400">Allocation:</span> 
+                                    <span class="font-semibold text-white">${{ ot.amount_spent|stringformat:".2f" }} {{ ot.quote_currency }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-400">Placed:</span> 
+                                    <span class="text-gray-200">{{ ot.age_str }}</span>
+                                    <span class="text-gray-500 text-[11px]">(Auto-timeout: {{ ot.timeout_remaining_mins }}m)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Manual Action Buttons with Mutual Lockout -->
+                    <div class="flex flex-wrap items-center gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-800" id="open-order-actions-{{ ot.id }}">
+                        
+                        <!-- 1. Reset at Live Bid Price -->
+                        <form method="POST" action="{% url 'trade_replace' ot.id %}" class="inline m-0"
+                              hx-post="{% url 'trade_replace' ot.id %}"
+                              hx-target="#open-orders-box-container"
+                              hx-swap="outerHTML"
+                              hx-disabled-elt="#open-order-actions-{{ ot.id }} button">
+                            {% csrf_token %}
+                            <button type="submit"
+                                class="open-order-btn inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-semibold tracking-wide transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-sm"
+                                title="Cancel and immediately place a fresh maker limit order at the latest market bid">
+                                <svg class="htmx-spinner-show animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span class="htmx-text-default flex items-center gap-1">
+                                    <span>↺</span>
+                                    <span>Reset at Bid</span>
+                                </span>
+                                <span class="htmx-text-loading">Resetting...</span>
+                            </button>
+                        </form>
+
+                        <!-- 2. Cancel Order -->
+                        <form method="POST" action="{% url 'trade_cancel' ot.id %}" class="inline m-0"
+                              hx-post="{% url 'trade_cancel' ot.id %}"
+                              hx-target="#open-orders-box-container"
+                              hx-swap="outerHTML"
+                              hx-disabled-elt="#open-order-actions-{{ ot.id }} button">
+                            {% csrf_token %}
+                            <button type="submit"
+                                class="open-order-btn inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-red-950/60 text-gray-300 hover:text-red-300 border border-gray-700 hover:border-red-700/60 rounded-md text-xs font-semibold tracking-wide transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-sm"
+                                title="Cancel this open order on the exchange">
+                                <svg class="htmx-spinner-show animate-spin h-3.5 w-3.5 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span class="htmx-text-default flex items-center gap-1">
+                                    <span>✕</span>
+                                    <span>Cancel</span>
+                                </span>
+                                <span class="htmx-text-loading">Canceling...</span>
+                            </button>
+                        </form>
+
+                        <!-- 3. Fill as Market Order (Emergency / Last Resort) -->
+                        <form method="POST" action="{% url 'trade_market_fallback' ot.id %}" class="inline m-0"
+                              hx-post="{% url 'trade_market_fallback' ot.id %}"
+                              hx-target="#open-orders-box-container"
+                              hx-swap="outerHTML"
+                              hx-disabled-elt="#open-order-actions-{{ ot.id }} button"
+                              onsubmit="return confirm('Emergency Fallback: This will cancel the limit order and immediately execute a Market Taker order. Proceed?');">
+                            {% csrf_token %}
+                            <button type="submit"
+                                class="open-order-btn inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-500/40 rounded-md text-xs font-semibold tracking-wide transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-sm"
+                                title="Emergency fallback: Cancel limit order and execute immediately as a market order">
+                                <svg class="htmx-spinner-show animate-spin h-3.5 w-3.5 text-amber-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span class="htmx-text-default flex items-center gap-1">
+                                    <span>⚡</span>
+                                    <span>Market Order</span>
+                                </span>
+                                <span class="htmx-text-loading">Executing...</span>
+                            </button>
+                        </form>
+
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>

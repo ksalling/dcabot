@@ -65,8 +65,15 @@ def get_coin_icon_info(symbol):
         return {'bg_class': 'bg-gray-800 text-gray-200 border border-gray-600 font-semibold', 'label': base_coin[:2]}
 
 def get_dashboard_context(user):
+    from .services.order_monitor_service import OrderMonitorService
     from .services.portfolio import PortfolioService
     
+    # Sync open orders for this user with the exchange to immediately reflect any fills/cancels
+    try:
+        OrderMonitorService.sync_open_orders_for_user(user)
+    except Exception as e:
+        logger.warning(f"Error syncing open orders in dashboard context: {e}")
+
     # Portfolio Calculation
     portfolio_service = PortfolioService(user)
     portfolio_data = portfolio_service.get_portfolio_summary()
@@ -74,7 +81,7 @@ def get_dashboard_context(user):
     # Data Fetching
     jobs = AutobuyJob.objects.filter(user=user).order_by('-created_at')
     accounts = ExchangeAccount.objects.filter(user=user)
-    recent_trades_qs = Trade.objects.filter(user=user).order_by('-timestamp')[:30] # Fetch up to 30 for card stacks
+    recent_trades_qs = Trade.objects.filter(user=user, status='completed').order_by('-timestamp')[:30] # Fetch up to 30 for card stacks
     
     price_map = {h['symbol']: h['current_price'] for h in portfolio_data.get('holdings', [])}
     
@@ -106,14 +113,24 @@ def get_dashboard_context(user):
             'coin_icon': coin_icon,
         })
     
-    # Group trades by Job execution run
+    # Group trades by Job execution run (sequential multi-token orders without duplicate symbols)
     recent_jobs = []
     current_group = None
     for trade_item in recent_trades:
-        minute_ts = trade_item['timestamp'].strftime('%Y-%m-%d %H:%M') if trade_item['timestamp'] else ''
-        group_key = (trade_item['job_name'], trade_item['exchange_name'], minute_ts)
+        is_same_group = False
+        if current_group and trade_item['timestamp'] and current_group['timestamp']:
+            last_trade_ts = current_group['trades'][-1]['timestamp'] if current_group['trades'] else current_group['timestamp']
+            time_diff = abs((last_trade_ts - trade_item['timestamp']).total_seconds()) if last_trade_ts else 999999
+            existing_symbols = [t['symbol'] for t in current_group['trades']]
+            
+            # Group trades from the same job run (within 90 seconds of each other and no duplicate token symbols)
+            if (current_group['job_name'] == trade_item['job_name'] and 
+                current_group['exchange_name'] == trade_item['exchange_name'] and 
+                time_diff <= 90 and 
+                trade_item['symbol'] not in existing_symbols):
+                is_same_group = True
         
-        if current_group and current_group['key'] == group_key:
+        if is_same_group:
             current_group['trades'].append(trade_item)
             current_group['total_spent'] += trade_item['amount_spent']
             current_group['total_fees'] += trade_item['fee_incurred']
@@ -126,7 +143,6 @@ def get_dashboard_context(user):
                 recent_jobs.append(current_group)
             
             current_group = {
-                'key': group_key,
                 'job_name': trade_item['job_name'],
                 'exchange_name': trade_item['exchange_name'],
                 'timestamp': trade_item['timestamp'],
@@ -142,12 +158,45 @@ def get_dashboard_context(user):
         if current_group['total_spent'] > 0:
             current_group['total_pnl_percent'] = (current_group['total_pnl'] / current_group['total_spent']) * 100
         recent_jobs.append(current_group)
+
+    # Open Limit Orders for Status Box
+    from django.utils import timezone
+    open_trades_qs = Trade.objects.filter(user=user, status='open').order_by('-timestamp')
+    open_trades = []
+    for ot in open_trades_qs:
+        ot_quote = ot.symbol.split('/')[1] if '/' in ot.symbol else 'USD'
+        ot_price = price_map.get(ot.symbol, ot.purchase_price)
+        age_seconds = (timezone.now() - ot.timestamp).total_seconds()
+        age_mins = int(age_seconds // 60)
+        age_str = f"{age_mins}m ago" if age_mins < 60 else f"{int(age_mins // 60)}h {age_mins % 60}m ago"
+        timeout_mins = ot.job.limit_order_timeout_minutes if (ot.job and ot.job.limit_order_timeout_minutes) else 15
+        timeout_remaining_mins = max(0, timeout_mins - age_mins)
+
+        open_trades.append({
+            'id': ot.id,
+            'order_id': ot.order_id,
+            'symbol': ot.symbol,
+            'quote_currency': ot_quote,
+            'exchange_name': ot.exchange_name,
+            'job_name': ot.job_name,
+            'order_type': ot.order_type,
+            'amount_spent': ot.amount_spent,
+            'amount_received': ot.amount_received,
+            'purchase_price': ot.purchase_price,
+            'current_price': ot_price,
+            'timestamp': ot.timestamp,
+            'age_str': age_str,
+            'timeout_mins': timeout_mins,
+            'timeout_remaining_mins': timeout_remaining_mins,
+            'coin_icon': get_coin_icon_info(ot.symbol),
+        })
     
     return {
         'jobs': jobs,
         'accounts': accounts,
         'recent_trades': recent_trades,
         'recent_jobs': recent_jobs,
+        'open_trades': open_trades,
         'portfolio': portfolio_data
     }
 
@@ -748,6 +797,43 @@ class TradeListView(LoginRequiredMixin, ListView):
         breakdown_labels = [item['symbol'] for item in breakdown_agg]
         breakdown_values = [round(float(item['total']), 2) for item in breakdown_agg]
 
+        # Open Limit Orders for Status Box
+        from .services.order_monitor_service import OrderMonitorService
+        try:
+            OrderMonitorService.sync_open_orders_for_user(self.request.user)
+        except Exception:
+            pass
+
+        open_trades_qs = Trade.objects.filter(user=self.request.user, status='open').order_by('-timestamp')
+        open_trades = []
+        for ot in open_trades_qs:
+            ot_quote = ot.symbol.split('/')[1] if '/' in ot.symbol else 'USD'
+            ot_price = price_map.get(ot.symbol, ot.purchase_price)
+            age_seconds = (timezone.now() - ot.timestamp).total_seconds()
+            age_mins = int(age_seconds // 60)
+            age_str = f"{age_mins}m ago" if age_mins < 60 else f"{int(age_mins // 60)}h {age_mins % 60}m ago"
+            timeout_mins = ot.job.limit_order_timeout_minutes if (ot.job and ot.job.limit_order_timeout_minutes) else 15
+            timeout_remaining_mins = max(0, timeout_mins - age_mins)
+
+            open_trades.append({
+                'id': ot.id,
+                'order_id': ot.order_id,
+                'symbol': ot.symbol,
+                'quote_currency': ot_quote,
+                'exchange_name': ot.exchange_name,
+                'job_name': ot.job_name,
+                'order_type': ot.order_type,
+                'amount_spent': ot.amount_spent,
+                'amount_received': ot.amount_received,
+                'purchase_price': ot.purchase_price,
+                'current_price': ot_price,
+                'timestamp': ot.timestamp,
+                'age_str': age_str,
+                'timeout_mins': timeout_mins,
+                'timeout_remaining_mins': timeout_remaining_mins,
+                'coin_icon': get_coin_icon_info(ot.symbol),
+            })
+
         context.update({
             'current_sort': current_sort,
             'search_query': search_query,
@@ -757,6 +843,7 @@ class TradeListView(LoginRequiredMixin, ListView):
             'total_spent': total_spent,
             'total_fees': total_fees,
             'avg_trade_size': avg_trade_size,
+            'open_trades': open_trades,
             'timeline_labels_json': json.dumps(timeline_labels),
             'timeline_values_json': json.dumps(timeline_values),
             'profit_values_json': json.dumps(profit_values),
@@ -930,4 +1017,62 @@ class AccountPairsView(LoginRequiredMixin, View):
                 'error': str(e),
                 'pairs': []
             })
+
+class CancelOpenOrderView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        from .services.order_monitor_service import OrderMonitorService
+        trade = get_object_or_404(Trade, pk=pk, user=request.user)
+        success, message = OrderMonitorService.manual_cancel_order(trade, request.user)
+        if success:
+            messages.success(request, message)
+        else:
+            messages.error(request, message)
+
+        if request.headers.get('HX-Request'):
+            context = get_dashboard_context(request.user)
+            target = request.headers.get('HX-Target', '')
+            template = 'core/partials/dashboard_live_content.html' if target == 'dashboard-live-container' else 'core/partials/open_orders_box.html'
+            response = render(request, template, context)
+            response['HX-Trigger'] = 'refreshDashboard'
+            return response
+        return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
+
+class ReplaceOpenOrderView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        from .services.order_monitor_service import OrderMonitorService
+        trade = get_object_or_404(Trade, pk=pk, user=request.user)
+        success, message = OrderMonitorService.manual_replace_order(trade, request.user)
+        if success:
+            messages.success(request, message)
+        else:
+            messages.error(request, message)
+
+        if request.headers.get('HX-Request'):
+            context = get_dashboard_context(request.user)
+            target = request.headers.get('HX-Target', '')
+            template = 'core/partials/dashboard_live_content.html' if target == 'dashboard-live-container' else 'core/partials/open_orders_box.html'
+            response = render(request, template, context)
+            response['HX-Trigger'] = 'refreshDashboard'
+            return response
+        return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
+
+class MarketFallbackOpenOrderView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        from .services.order_monitor_service import OrderMonitorService
+        trade = get_object_or_404(Trade, pk=pk, user=request.user)
+        success, message = OrderMonitorService.manual_market_fallback(trade, request.user)
+        if success:
+            messages.success(request, message)
+        else:
+            messages.error(request, message)
+
+        if request.headers.get('HX-Request'):
+            context = get_dashboard_context(request.user)
+            target = request.headers.get('HX-Target', '')
+            template = 'core/partials/dashboard_live_content.html' if target == 'dashboard-live-container' else 'core/partials/open_orders_box.html'
+            response = render(request, template, context)
+            response['HX-Trigger'] = 'refreshDashboard'
+            return response
+        return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
+
 

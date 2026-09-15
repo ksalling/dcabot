@@ -25,14 +25,23 @@
             padding-top: 0 !important;
             padding-bottom: 0 !important;
         }
-        .htmx-request .htmx-spinner-show,
+        .htmx-spinner-show {
+            display: none;
+        }
+        .htmx-text-loading {
+            display: none;
+        }
+        form.htmx-request .htmx-spinner-show,
+        button.htmx-request .htmx-spinner-show,
         .htmx-request.htmx-spinner-show {
             display: inline-block !important;
         }
-        .htmx-request .htmx-text-default {
+        form.htmx-request .htmx-text-default,
+        button.htmx-request .htmx-text-default {
             display: none !important;
         }
-        .htmx-request .htmx-text-loading {
+        form.htmx-request .htmx-text-loading,
+        button.htmx-request .htmx-text-loading {
             display: inline !important;
         }
     </style>

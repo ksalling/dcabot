@@ -5,13 +5,13 @@ from apscheduler.triggers.cron import CronTrigger
 from django_apscheduler.jobstores import DjangoJobStore
 from django_apscheduler.models import DjangoJobExecution
 from django_apscheduler import util
-from core.models import AutobuyJob
 from core.services.trade_executor import TradeExecutor
+from core.services.order_monitor_service import OrderMonitorService
 from django.utils import timezone
 import logging
 
 from core.services.notification_service import NotificationService
-from core.models import JobLog
+from core.models import AutobuyJob, JobLog
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,15 @@ def check_and_run_jobs():
     """
     Check for jobs that are due and run them.
     Also checks for paused jobs that were due and records a skip notice & alert.
+    Also polls open limit orders to update fills and timeout/replace stale orders.
     """
     now = timezone.now()
+    
+    # 0. Poll open limit orders across the platform
+    try:
+        OrderMonitorService.check_open_limit_orders()
+    except Exception as e:
+        logger.error(f"Error checking open limit orders: {e}")
     
     # 1. Grab jobs that are active and due
     active_jobs = AutobuyJob.objects.filter(is_active=True, next_run__lte=now)
@@ -70,10 +77,10 @@ class Command(BaseCommand):
         scheduler = BlockingScheduler(timezone=settings.TIME_ZONE)
         scheduler.add_jobstore(DjangoJobStore(), "default")
 
-        # Schedule the "check_and_run_jobs" to run every minute
+        # Schedule "check_and_run_jobs" to run every 30 seconds
         scheduler.add_job(
             check_and_run_jobs,
-            trigger=CronTrigger(second="0"),  # Every minute at :00
+            trigger=CronTrigger(second="0,30"),  # Every 30 seconds
             id="check_and_run_jobs",
             max_instances=1,
             replace_existing=True,

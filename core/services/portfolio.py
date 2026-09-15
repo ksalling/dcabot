@@ -34,7 +34,7 @@ class PortfolioService:
             }
         """
         # 1. Aggregate Trades
-        trades = Trade.objects.filter(user=self.user)
+        trades = Trade.objects.filter(user=self.user, status='completed', amount_received__gt=0)
         holdings_map = {}
 
         for trade in trades:

@@ -216,6 +216,8 @@ class TradeExecutorSafetyTest(TestCase):
 
         self.token.token_symbol = 'BTC'
         self.token.save()
+        self.job.order_type = 'market'
+        self.job.save()
 
         executor = TradeExecutor()
         executor.execute_job(self.job.pk)
@@ -1152,6 +1154,241 @@ class TradeBackupAndImportTest(TestCase):
         response = self.client.post(reverse('trade_import'), {'backup_file': uploaded_file}, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Trade.objects.filter(user=self.user_b).count(), 2)
+
+
+class MakerLimitOrderAndMonitorTest(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create(username='limituser', email='limit@example.com')
+        self.exchange = SupportedExchange.objects.create(name='Kraken', slug='kraken')
+        self.account = ExchangeAccount.objects.create(
+            user=self.user,
+            exchange=self.exchange,
+            nickname='Kraken Account',
+            api_key='k_key',
+            api_secret='k_secret'
+        )
+        self.job = AutobuyJob.objects.create(
+            user=self.user,
+            account=self.account,
+            name='Maker DCA Job',
+            total_amount=Decimal('100.00'),
+            quote_currency='USD',
+            order_type='limit',
+            limit_order_timeout_minutes=60,
+            interval='daily',
+            is_active=True,
+            start_time=timezone.now()
+        )
+        self.token = JobToken.objects.create(
+            job=self.job,
+            token_symbol='BTC',
+            percentage=Decimal('100.00')
+        )
+
+    @patch('ccxt.kraken')
+    def test_exchange_service_place_maker_limit_order(self, mock_kraken_class):
+        mock_instance = MagicMock()
+        mock_kraken_class.return_value = mock_instance
+        mock_instance.fetch_ticker.return_value = {'bid': 50000.0, 'ask': 50100.0, 'last': 50050.0}
+        mock_instance.market.return_value = {'symbol': 'BTC/USD', 'precision': {'amount': 6, 'price': 2}}
+        mock_instance.amount_to_precision.return_value = '0.002'
+        mock_instance.price_to_precision.return_value = '50000.0'
+        mock_instance.create_limit_buy_order.return_value = {
+            'id': 'ORD-LIM-1',
+            'status': 'open',
+            'price': 50000.0,
+            'amount': 0.002
+        }
+
+        service = ExchangeService(self.account)
+        bid = service.get_bid_price('BTC/USD')
+        self.assertEqual(bid, 50000.0)
+
+        order = service.place_maker_limit_buy_order('BTC/USD', Decimal('100.00'), job=self.job)
+        self.assertEqual(order['id'], 'ORD-LIM-1')
+        mock_instance.create_limit_buy_order.assert_called_once_with(
+            'BTC/USD',
+            0.002,
+            50000.0,
+            {'postOnly': True}
+        )
+
+    @patch('core.services.trade_executor.ExchangeService')
+    def test_trade_executor_places_open_limit_trade(self, mock_exchange_service_class):
+        mock_service = MagicMock()
+        mock_exchange_service_class.return_value = mock_service
+        mock_service.validate_pair.return_value = (True, 'BTC/USD', '')
+        mock_service.validate_order_size.return_value = (True, '')
+        mock_service.place_maker_limit_buy_order.return_value = {
+            'id': 'ORD-RESTING-1',
+            'status': 'open',
+            'price': 50000.0,
+            'amount': 0.002,
+            'cost': None
+        }
+
+        from core.services.trade_executor import TradeExecutor
+        executor = TradeExecutor()
+        executor.execute_job(self.job.id)
+
+        trade = Trade.objects.filter(job=self.job).first()
+        self.assertIsNotNone(trade)
+        self.assertEqual(trade.order_type, 'limit')
+        self.assertEqual(trade.status, 'open')
+        self.assertEqual(trade.order_id, 'ORD-RESTING-1')
+        self.assertEqual(trade.purchase_price, Decimal('50000.0'))
+
+    @patch('core.services.order_monitor_service.ExchangeService')
+    def test_order_monitor_detects_fill(self, mock_exchange_service_class):
+        mock_service = MagicMock()
+        mock_exchange_service_class.return_value = mock_service
+
+        trade = Trade.objects.create(
+            job=self.job,
+            user=self.user,
+            exchange_name='Kraken',
+            symbol='BTC/USD',
+            job_name=self.job.name,
+            order_type='limit',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0'),
+            purchase_price=Decimal('50000.0'),
+            order_id='ORD-FILL-1',
+            status='open'
+        )
+
+        mock_service.fetch_order_status.return_value = {
+            'id': 'ORD-FILL-1',
+            'status': 'closed',
+            'filled': 0.002,
+            'cost': 100.0,
+            'average': 50000.0,
+            'fee': {'cost': 0.16}
+        }
+
+        from core.services.order_monitor_service import OrderMonitorService
+        OrderMonitorService.check_open_limit_orders()
+
+        trade.refresh_from_db()
+        self.assertEqual(trade.status, 'completed')
+        self.assertEqual(trade.amount_received, Decimal('0.002'))
+        self.assertEqual(trade.fee_incurred, Decimal('0.16'))
+
+    @patch('core.services.order_monitor_service.ExchangeService')
+    def test_order_monitor_timeout_and_replace(self, mock_exchange_service_class):
+        from datetime import timedelta
+        mock_service = MagicMock()
+        mock_exchange_service_class.return_value = mock_service
+
+        old_timestamp = timezone.now() - timedelta(minutes=75)
+        old_trade = Trade.objects.create(
+            job=self.job,
+            user=self.user,
+            exchange_name='Kraken',
+            symbol='BTC/USD',
+            job_name=self.job.name,
+            order_type='limit',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0'),
+            purchase_price=Decimal('50000.0'),
+            order_id='ORD-STALE-1',
+            status='open'
+        )
+        Trade.objects.filter(pk=old_trade.pk).update(timestamp=old_timestamp)
+        old_trade.refresh_from_db()
+
+        # Mock order check: Still open, 0 filled
+        mock_service.fetch_order_status.side_effect = [
+            {'id': 'ORD-STALE-1', 'status': 'open', 'filled': 0, 'cost': 0}, # initial check
+            {'id': 'ORD-STALE-1', 'status': 'canceled', 'filled': 0, 'cost': 0} # check after cancel
+        ]
+        mock_service.validate_order_size.return_value = (True, '')
+        mock_service.place_maker_limit_buy_order.return_value = {
+            'id': 'ORD-REPLACED-2',
+            'status': 'open',
+            'price': 49800.0,
+            'amount': 0.002008,
+            'cost': 100.0
+        }
+
+        from core.services.order_monitor_service import OrderMonitorService
+        OrderMonitorService.check_open_limit_orders()
+
+        old_trade.refresh_from_db()
+        self.assertEqual(old_trade.status, 'canceled')
+
+        new_trade = Trade.objects.filter(job=self.job, order_id='ORD-REPLACED-2').first()
+        self.assertIsNotNone(new_trade)
+        self.assertEqual(new_trade.status, 'open')
+        self.assertEqual(new_trade.purchase_price, Decimal('49800.0'))
+
+    @patch('core.services.order_monitor_service.OrderMonitorService.manual_cancel_order')
+    def test_manual_cancel_view(self, mock_manual_cancel):
+        mock_manual_cancel.return_value = (True, "Order canceled successfully.")
+        trade = Trade.objects.create(
+            job=self.job,
+            user=self.user,
+            exchange_name='Kraken',
+            symbol='BTC/USD',
+            job_name=self.job.name,
+            order_type='limit',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0'),
+            purchase_price=Decimal('50000.0'),
+            order_id='ORD-CANCEL-1',
+            status='open'
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('trade_cancel', kwargs={'pk': trade.pk}))
+        self.assertEqual(response.status_code, 302)
+        mock_manual_cancel.assert_called_once_with(trade, self.user)
+
+    @patch('core.services.order_monitor_service.OrderMonitorService.manual_replace_order')
+    def test_manual_replace_view(self, mock_manual_replace):
+        mock_manual_replace.return_value = (True, "Order replaced at bid.")
+        trade = Trade.objects.create(
+            job=self.job,
+            user=self.user,
+            exchange_name='Kraken',
+            symbol='BTC/USD',
+            job_name=self.job.name,
+            order_type='limit',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0'),
+            purchase_price=Decimal('50000.0'),
+            order_id='ORD-REP-1',
+            status='open'
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('trade_replace', kwargs={'pk': trade.pk}))
+        self.assertEqual(response.status_code, 302)
+        mock_manual_replace.assert_called_once_with(trade, self.user)
+
+    @patch('core.services.order_monitor_service.OrderMonitorService.manual_market_fallback')
+    def test_manual_market_fallback_view(self, mock_manual_fallback):
+        mock_manual_fallback.return_value = (True, "Market order executed.")
+        trade = Trade.objects.create(
+            job=self.job,
+            user=self.user,
+            exchange_name='Kraken',
+            symbol='BTC/USD',
+            job_name=self.job.name,
+            order_type='limit',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0'),
+            purchase_price=Decimal('50000.0'),
+            order_id='ORD-FALLBACK-1',
+            status='open'
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('trade_market_fallback', kwargs={'pk': trade.pk}))
+        self.assertEqual(response.status_code, 302)
+        mock_manual_fallback.assert_called_once_with(trade, self.user)
+
 
 
 

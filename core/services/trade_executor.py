@@ -5,7 +5,13 @@ from .notification_service import NotificationService
 import logging
 from decimal import Decimal
 
-logger = logging.getLogger(__name__)
+def safe_decimal(val, fallback=0):
+    if val is None or val == '' or str(val).strip().lower() in ['none', 'null', 'nan']:
+        return Decimal(str(fallback))
+    try:
+        return Decimal(str(val))
+    except Exception:
+        return Decimal(str(fallback))
 
 class TradeExecutor:
     def execute_job(self, job_id):
@@ -54,14 +60,19 @@ class TradeExecutor:
                 return
             
             try:
-                order = exchange_service.place_market_buy_order(symbol, allocation, job=job, quote_currency=job.quote_currency)
+                order_type = getattr(job, 'order_type', 'limit') or 'limit'
                 
-                # Check if order result is minimal (e.g. missing status or cost/fee)
-                if order and (not order.get('status') or order.get('status') == 'open' or not order.get('cost')):
+                if order_type == 'limit':
+                    order = exchange_service.place_maker_limit_buy_order(symbol, allocation, job=job, quote_currency=job.quote_currency)
+                else:
+                    order = exchange_service.place_market_buy_order(symbol, allocation, job=job, quote_currency=job.quote_currency)
+                
+                # Check if order result is minimal (missing status)
+                if order and not order.get('status'):
                      try:
                          import time
                          time.sleep(1) 
-                         fetched_order = exchange_service.exchange.fetch_order(order['id'], symbol)
+                         fetched_order = exchange_service.exchange.fetch_order(order.get('id'), symbol)
                          if fetched_order:
                              order = fetched_order
                              exchange_service.log(f"Fetched full order details: {order.get('id')}", level='INFO', job=job)
@@ -71,6 +82,25 @@ class TradeExecutor:
                 # Log full order details for debugging
                 exchange_service.log(f"Order Details: {order}", level='INFO', job=job)
                 
+                order_status = order.get('status', 'open')
+                if order_status == 'closed':
+                    trade_status = 'completed'
+                    amount_received = safe_decimal(order.get('filled') or order.get('amount'), 0)
+                    amount_spent = safe_decimal(order.get('cost') or allocation, allocation)
+                    purchase_price = safe_decimal(order.get('average') or order.get('price'), 0)
+                elif order_status in ['canceled', 'rejected', 'expired']:
+                    trade_status = 'canceled'
+                    amount_received = safe_decimal(order.get('filled'), 0)
+                    amount_spent = safe_decimal(order.get('cost'), 0)
+                    purchase_price = safe_decimal(order.get('average') or order.get('price'), 0)
+                else:
+                    trade_status = 'open'
+                    amount_received = safe_decimal(order.get('filled'), 0)
+                    amount_spent = safe_decimal(allocation, allocation)
+                    purchase_price = safe_decimal(order.get('price') or order.get('average'), 0)
+                
+                fee_incurred = safe_decimal((order.get('fee') or {}).get('cost'), 0)
+
                 # Create Trade record
                 trade = Trade.objects.create(
                     job=job,
@@ -78,13 +108,13 @@ class TradeExecutor:
                     exchange_name=job.account.exchange.name,
                     symbol=symbol,
                     job_name=job.name,  # Snapshot
-                    order_type='market', # Currently always market
-                    amount_spent=Decimal(order.get('cost') or allocation), # Use actual cost if available
-                    amount_received=Decimal(order.get('amount', 0)), # Actual filled amount
-                    purchase_price=Decimal(order.get('price', 0) or 0), # Average price
-                    fee_incurred=Decimal((order.get('fee') or {}).get('cost', 0) or 0),
+                    order_type=order_type,
+                    amount_spent=amount_spent,
+                    amount_received=amount_received,
+                    purchase_price=purchase_price,
+                    fee_incurred=fee_incurred,
                     order_id=str(order.get('id', '')),
-                    status='completed'
+                    status=trade_status
                 )
                 created_trades.append(trade)
                 
