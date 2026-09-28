@@ -10,7 +10,11 @@ from django.utils.decorators import method_decorator
 from django.contrib import messages
 from django.utils import timezone
 from .models import UserProfile
-from polar_sdk import Polar
+
+try:
+    from polar_sdk import Polar
+except ImportError:
+    Polar = None
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +26,11 @@ class SubscriptionView(LoginRequiredMixin, View):
 
 class CreateCheckoutSessionView(LoginRequiredMixin, View):
     def post(self, request):
+        if not Polar:
+            logger.error("polar_sdk is not installed in the environment.")
+            messages.error(request, "Subscription service is temporarily unavailable.")
+            return redirect('dashboard')
+
         if not settings.POLAR_ACCESS_TOKEN or not settings.POLAR_PRODUCT_ID:
             messages.error(request, "Subscription service is not configured correctly.")
             return redirect('dashboard')

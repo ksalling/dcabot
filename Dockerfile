@@ -12,10 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies to a temporary directory
+# Install dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Final production image
 FROM python:3.12-slim
@@ -39,7 +39,7 @@ RUN useradd -m -r appuser && \
     chown -R appuser:appuser /app
 
 # Copy installed packages from builder
-COPY --from=builder /install /usr/local
+COPY --from=builder /usr/local /usr/local
 
 # Copy application code
 COPY --chown=appuser:appuser . .
