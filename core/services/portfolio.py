@@ -56,11 +56,43 @@ class PortfolioService:
             holdings_map[symbol]['cost'] += trade.amount_spent
             holdings_map[symbol]['fees'] += trade.fee_incurred
 
-        # 2. Fetch Current Prices
+        # 2. Fetch Current Prices & 24h Changes
         # We need an exchange instance to fetch prices.
-        # Use the first active account found for the user.
-        account = ExchangeAccount.objects.filter(user=self.user, is_active=True).first()
+        # Check user's preferred pricing exchange account, or fallback to the first active account found for the user.
+        profile = getattr(self.user, 'userprofile', None)
+        account = None
+        if profile and profile.preferred_pricing_account and profile.preferred_pricing_account.is_active:
+            account = profile.preferred_pricing_account
+        if not account:
+            account = ExchangeAccount.objects.filter(user=self.user, is_active=True).first()
         ticker_map = {}
+
+        def extract_ticker_data(data):
+            if not isinstance(data, dict):
+                return {'price': None, 'change_24h': Decimal('0')}
+            price = None
+            if data.get('last') is not None and float(data['last']) > 0:
+                price = Decimal(str(data['last']))
+            elif data.get('close') is not None and float(data['close']) > 0:
+                price = Decimal(str(data['close']))
+
+            change_24h = Decimal('0')
+            if data.get('percentage') is not None:
+                try:
+                    change_24h = Decimal(str(data['percentage']))
+                except Exception:
+                    change_24h = Decimal('0')
+            elif data.get('open') and data.get('last') and float(data['open']) > 0:
+                try:
+                    change_24h = ((Decimal(str(data['last'])) - Decimal(str(data['open']))) / Decimal(str(data['open']))) * Decimal('100')
+                except Exception:
+                    change_24h = Decimal('0')
+            elif data.get('previousClose') and data.get('last') and float(data['previousClose']) > 0:
+                try:
+                    change_24h = ((Decimal(str(data['last'])) - Decimal(str(data['previousClose']))) / Decimal(str(data['previousClose']))) * Decimal('100')
+                except Exception:
+                    change_24h = Decimal('0')
+            return {'price': price, 'change_24h': change_24h}
         
         if account and holdings_map:
             try:
@@ -75,25 +107,20 @@ class PortfolioService:
                 
                 # Fetch tickers for all held symbols
                 # Some exchanges support fetchTickers (plural), others don't.
-                # Try fetchTickers first if list is long? 
-                # For safety/compatibility, loop fetchTicker or fetchTickers if supported.
-                # CCXT fetchTickers usually takes a list of symbols.
-                
                 symbols_to_fetch = list(holdings_map.keys())
                 try:
                     tickers = exchange.fetch_tickers(symbols_to_fetch)
-                    # format: {'BTC/USDT': {'last': 50000, ...}}
                     for s, data in tickers.items():
-                        ticker_map[s] = Decimal(str(data['last'])) if data.get('last') else Decimal(0)
+                        ticker_map[s] = extract_ticker_data(data)
                 except Exception:
                     # Fallback to loop if fetchTickers fails or not supported
                     for s in symbols_to_fetch:
                         try:
                             ticker = exchange.fetch_ticker(s)
-                            ticker_map[s] = Decimal(str(ticker['last'])) if ticker.get('last') else Decimal(0)
+                            ticker_map[s] = extract_ticker_data(ticker)
                         except Exception as e:
                             logger.error(f"Failed to fetch ticker for {s}: {e}")
-                            ticker_map[s] = Decimal(0)
+                            ticker_map[s] = {'price': None, 'change_24h': Decimal('0')}
 
             except Exception as e:
                 logger.error(f"Failed to initialize exchange for price checks: {e}")
@@ -113,10 +140,9 @@ class PortfolioService:
                 continue
 
             avg_price = cost / qty
-            current_price = ticker_map.get(symbol, avg_price) # Fallback to cost price if no current price
-            
-            # If we couldn't fetch price, we can't calculate real PnL.
-            # Using avg_price means PnL is 0.
+            t_data = ticker_map.get(symbol, {})
+            current_price = t_data.get('price') or avg_price # Fallback to cost price if no current price
+            change_24h = t_data.get('change_24h', Decimal('0'))
             
             # Custom Logic per User Request:
             # Current Value = (Qty * Price) - Total Fees
@@ -137,6 +163,7 @@ class PortfolioService:
                 'cost_basis': cost,
                 'avg_price': avg_price,
                 'current_price': current_price,
+                'change_24h': change_24h,
                 'current_value': current_value,
                 'pnl': pnl,
                 'pnl_percent': pnl_percent,

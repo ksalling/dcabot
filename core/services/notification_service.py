@@ -20,13 +20,13 @@ class NotificationService:
         return getattr(profile, notification_type, True)
 
     @classmethod
-    def send_trade_success_email(cls, job, trades):
+    def send_job_summary_email(cls, job, trades):
         """
-        Send an email notification when a trade executes successfully.
+        Send a consolidated email summary when an automated DCA job run completes.
         """
         try:
-            if not cls.is_notification_enabled(job.user, 'notify_trade_success'):
-                logger.info(f"Skipping success email for {job.user.username} (notification disabled)")
+            if not cls.is_notification_enabled(job.user, 'notify_job_summary'):
+                logger.info(f"Skipping job summary email for {job.user.username} (notification disabled)")
                 return
 
             purchases_lines = []
@@ -40,7 +40,7 @@ class NotificationService:
             purchases_text = "\n".join(purchases_lines)
             next_run_str = job.next_run.strftime('%Y-%m-%d %H:%M UTC') if job.next_run else 'Not scheduled'
             
-            subject = f"Moondrip - Trade Executed: {job.name}"
+            subject = f"Moondrip - Job Summary: {job.name}"
             body = (
                 f"Hello {job.user.first_name or job.user.username},\n\n"
                 f"Your DCA job \"{job.name}\" executed successfully on {job.account.exchange.name}.\n\n"
@@ -59,9 +59,54 @@ class NotificationService:
                 recipient_list=[job.user.email],
                 fail_silently=False
             )
-            logger.info(f"Sent trade success email to {job.user.email} for job {job.name}")
+            logger.info(f"Sent job summary email to {job.user.email} for job {job.name}")
         except Exception as e:
-            logger.error(f"Failed to send trade success email for job {job.id}: {e}")
+            logger.error(f"Failed to send job summary email for job {job.id}: {e}")
+
+    @classmethod
+    def send_individual_trade_email(cls, trade):
+        """
+        Send an email notification when an individual trade or maker limit order executes.
+        """
+        try:
+            user = trade.user or (trade.job.user if trade.job else None)
+            if not user or not cls.is_notification_enabled(user, 'notify_trade_individual'):
+                logger.info(f"Skipping individual trade email for trade {trade.id} (notification disabled)")
+                return
+
+            job_str = f" ({trade.job_name})" if trade.job_name else ""
+            subject = f"Moondrip - Trade Executed: {trade.symbol}{job_str}"
+            body = (
+                f"Hello {user.first_name or user.username},\n\n"
+                f"An individual trade executed successfully on {trade.exchange_name}.\n\n"
+                f"Trade Details:\n"
+                f"  • Symbol: {trade.symbol}\n"
+                f"  • Order Type: {trade.order_type.upper()}\n"
+                f"  • Amount Received: {trade.amount_received:.8f} {trade.symbol.split('/')[0]}\n"
+                f"  • Execution Price: ${trade.purchase_price:.2f}\n"
+                f"  • Total Spent: ${trade.amount_spent:.2f}\n"
+                f"  • Fee: ${trade.fee_incurred:.4f}\n\n"
+                f"You can view your active portfolio and recent trade history in your dashboard.\n\n"
+                f"— The Moondrip Team"
+            )
+
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=None,
+                recipient_list=[user.email],
+                fail_silently=False
+            )
+            logger.info(f"Sent individual trade email to {user.email} for trade {trade.id} ({trade.symbol})")
+        except Exception as e:
+            logger.error(f"Failed to send individual trade email for trade {trade.id}: {e}")
+
+    @classmethod
+    def send_trade_success_email(cls, job, trades):
+        """
+        Legacy wrapper: Send job summary email notification.
+        """
+        return cls.send_job_summary_email(job, trades)
 
     @classmethod
     def send_trade_failed_email(cls, job, error_message, symbol=None):

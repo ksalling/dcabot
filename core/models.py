@@ -227,7 +227,19 @@ class UserProfile(models.Model):
     # Admin Override to grant access without subscription
     manual_access_granted = models.BooleanField(default=False, help_text=_("Grant full access without subscription"))
 
+    # Preferred Pricing Data Exchange Account
+    preferred_pricing_account = models.ForeignKey(
+        'ExchangeAccount',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pricing_profiles',
+        help_text=_("Preferred active exchange account for live market prices and 24h calculations")
+    )
+
     # Email Notification Preferences
+    notify_job_summary = models.BooleanField(default=True, help_text=_("Email summary whenever an automated DCA job completes its run"))
+    notify_trade_individual = models.BooleanField(default=False, help_text=_("Email notification for each individual trade or order fill"))
     notify_trade_success = models.BooleanField(default=True, help_text=_("Email alert when a trade executes successfully"))
     notify_trade_failed = models.BooleanField(default=True, help_text=_("Email alert when a trade fails"))
     notify_trade_skipped_paused = models.BooleanField(default=True, help_text=_("Email alert when a trade is skipped because the job was paused"))

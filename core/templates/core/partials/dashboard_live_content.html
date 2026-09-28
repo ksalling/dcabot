@@ -108,6 +108,7 @@
                             <th class="px-6 py-3 text-right">Holdings</th>
                             <th class="px-6 py-3 text-right">Avg Price</th>
                             <th class="px-6 py-3 text-right">Current Price</th>
+                            <th class="px-6 py-3 text-right">24h %</th>
                             <th class="px-6 py-3 text-right">Total Fees</th>
                             <th class="px-6 py-3 text-right">Value (Net)</th>
                             <th class="px-6 py-3 text-right">PnL</th>
@@ -122,6 +123,9 @@
                             <td class="px-6 py-4 text-right text-gray-300">$
                                 {{ asset.current_price|stringformat:".2f" }}
                             </td>
+                            <td class="px-6 py-4 text-right font-medium {% if asset.change_24h >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                                {% if asset.change_24h >= 0 %}+{% endif %}{{ asset.change_24h|stringformat:".2f" }}%
+                            </td>
                             <td class="px-6 py-4 text-right text-red-400">${{ asset.fees|stringformat:".4f" }}</td>
                             <td class="px-6 py-4 text-right font-medium text-white">$
                                 {{ asset.current_value|stringformat:".2f" }}</td>
@@ -133,7 +137,7 @@
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="7" class="px-6 py-8 text-center text-gray-500">No holdings yet.</td>
+                            <td colspan="8" class="px-6 py-8 text-center text-gray-500">No holdings yet.</td>
                         </tr>
                         {% endfor %}
                     </tbody>

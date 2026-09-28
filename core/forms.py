@@ -5,10 +5,22 @@ from .models import ExchangeAccount, AutobuyJob, JobToken, SupportedExchange, Ap
 from .services.exchange_service import ExchangeService
 
 class UserProfileForm(forms.ModelForm):
-    notify_trade_success = forms.BooleanField(
+    preferred_pricing_account = forms.ModelChoiceField(
+        queryset=ExchangeAccount.objects.none(),
         required=False,
-        label="Successful Trade Alerts",
-        help_text="Receive an email summary whenever a scheduled DCA trade executes."
+        empty_label="Default (First Active Exchange)",
+        label="Pricing Data Exchange",
+        help_text="Select the active exchange account to fetch live asset prices and 24h market performance from."
+    )
+    notify_job_summary = forms.BooleanField(
+        required=False,
+        label="Job Completion Summary Email",
+        help_text="Receive a consolidated summary email whenever an automated DCA job completes its run."
+    )
+    notify_trade_individual = forms.BooleanField(
+        required=False,
+        label="Individual Trade Fill Alerts",
+        help_text="Receive an email notification for each individual trade or maker limit order fill."
     )
     notify_trade_failed = forms.BooleanField(
         required=False,
@@ -32,17 +44,29 @@ class UserProfileForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.instance and hasattr(self.instance, 'userprofile'):
-            profile = self.instance.userprofile
-            self.fields['notify_trade_success'].initial = profile.notify_trade_success
-            self.fields['notify_trade_failed'].initial = profile.notify_trade_failed
-            self.fields['notify_trade_skipped_paused'].initial = profile.notify_trade_skipped_paused
+        if self.instance and self.instance.pk:
+            self.fields['preferred_pricing_account'].queryset = ExchangeAccount.objects.filter(
+                user=self.instance, is_active=True
+            ).select_related('exchange')
+            self.fields['preferred_pricing_account'].label_from_instance = (
+                lambda obj: f"{obj.nickname} ({obj.exchange.name})" if obj.nickname else obj.exchange.name
+            )
+            if hasattr(self.instance, 'userprofile'):
+                profile = self.instance.userprofile
+                self.fields['preferred_pricing_account'].initial = profile.preferred_pricing_account
+                self.fields['notify_job_summary'].initial = profile.notify_job_summary
+                self.fields['notify_trade_individual'].initial = profile.notify_trade_individual
+                self.fields['notify_trade_failed'].initial = profile.notify_trade_failed
+                self.fields['notify_trade_skipped_paused'].initial = profile.notify_trade_skipped_paused
 
     def save(self, commit=True):
         user = super().save(commit=commit)
         if hasattr(user, 'userprofile'):
             profile = user.userprofile
-            profile.notify_trade_success = self.cleaned_data.get('notify_trade_success', True)
+            profile.preferred_pricing_account = self.cleaned_data.get('preferred_pricing_account')
+            profile.notify_job_summary = self.cleaned_data.get('notify_job_summary', True)
+            profile.notify_trade_individual = self.cleaned_data.get('notify_trade_individual', False)
+            profile.notify_trade_success = self.cleaned_data.get('notify_job_summary', True)
             profile.notify_trade_failed = self.cleaned_data.get('notify_trade_failed', True)
             profile.notify_trade_skipped_paused = self.cleaned_data.get('notify_trade_skipped_paused', True)
             if commit:

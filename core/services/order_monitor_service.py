@@ -70,7 +70,7 @@ class OrderMonitorService:
                         job=trade.job
                     )
                     if trade.job:
-                        NotificationService.send_trade_success_email(trade.job, [trade])
+                        NotificationService.send_individual_trade_email(trade)
                     continue
 
                 # 2. Order was canceled/rejected externally
@@ -149,7 +149,7 @@ class OrderMonitorService:
                         job=trade.job
                     )
                     if trade.job:
-                        NotificationService.send_trade_success_email(trade.job, [trade])
+                        NotificationService.send_individual_trade_email(trade)
                     continue
 
                 # 2. Order was canceled or rejected externally -> Auto-replace at new bid

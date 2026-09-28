@@ -739,13 +739,15 @@ class NotificationAndAlertsTest(TestCase):
             is_active=False # Paused
         )
 
-    def test_profile_form_saves_notification_preferences(self):
+    def test_profile_form_saves_notification_and_pricing_preferences(self):
         url = reverse('profile')
         post_data = {
             'first_name': 'Alex',
             'last_name': 'User',
             'email': 'alertuser@example.com',
-            'notify_trade_success': 'on',
+            'preferred_pricing_account': self.account.id,
+            'notify_job_summary': 'on',
+            'notify_trade_individual': 'on',
             'notify_trade_failed': '', # unchecked
             'notify_trade_skipped_paused': 'on',
         }
@@ -753,12 +755,14 @@ class NotificationAndAlertsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         
         self.user.userprofile.refresh_from_db()
-        self.assertTrue(self.user.userprofile.notify_trade_success)
+        self.assertEqual(self.user.userprofile.preferred_pricing_account, self.account)
+        self.assertTrue(self.user.userprofile.notify_job_summary)
+        self.assertTrue(self.user.userprofile.notify_trade_individual)
         self.assertFalse(self.user.userprofile.notify_trade_failed)
         self.assertTrue(self.user.userprofile.notify_trade_skipped_paused)
 
     @patch('core.services.notification_service.send_mail')
-    def test_send_trade_success_email(self, mock_send_mail):
+    def test_send_job_summary_email(self, mock_send_mail):
         from core.services.notification_service import NotificationService
         trade = Trade.objects.create(
             user=self.user,
@@ -771,12 +775,58 @@ class NotificationAndAlertsTest(TestCase):
             purchase_price=50000.0,
             fee_incurred=0.05
         )
-        NotificationService.send_trade_success_email(self.job, [trade])
+        NotificationService.send_job_summary_email(self.job, [trade])
         mock_send_mail.assert_called_once()
         call_kwargs = mock_send_mail.call_args[1]
-        self.assertIn("Daily DCA", call_kwargs['subject'])
+        self.assertIn("Job Summary: Daily DCA", call_kwargs['subject'])
         self.assertIn("BTC/USDT", call_kwargs['message'])
         self.assertEqual(call_kwargs['recipient_list'], ['alertuser@example.com'])
+
+    @patch('core.services.notification_service.send_mail')
+    def test_send_individual_trade_email(self, mock_send_mail):
+        from core.services.notification_service import NotificationService
+        self.user.userprofile.notify_trade_individual = True
+        self.user.userprofile.save()
+
+        trade = Trade.objects.create(
+            user=self.user,
+            job=self.job,
+            job_name=self.job.name,
+            exchange_name='Binance',
+            symbol='BTC/USDT',
+            amount_spent=50.0,
+            amount_received=0.001,
+            purchase_price=50000.0,
+            fee_incurred=0.05,
+            order_type='limit'
+        )
+        NotificationService.send_individual_trade_email(trade)
+        mock_send_mail.assert_called_once()
+        call_kwargs = mock_send_mail.call_args[1]
+        self.assertIn("Trade Executed: BTC/USDT", call_kwargs['subject'])
+        self.assertIn("LIMIT", call_kwargs['message'])
+        self.assertEqual(call_kwargs['recipient_list'], ['alertuser@example.com'])
+
+    @patch('core.services.notification_service.send_mail')
+    def test_send_individual_trade_email_disabled_by_default(self, mock_send_mail):
+        from core.services.notification_service import NotificationService
+        self.user.userprofile.notify_trade_individual = False
+        self.user.userprofile.save()
+
+        trade = Trade.objects.create(
+            user=self.user,
+            job=self.job,
+            job_name=self.job.name,
+            exchange_name='Binance',
+            symbol='BTC/USDT',
+            amount_spent=50.0,
+            amount_received=0.001,
+            purchase_price=50000.0,
+            fee_incurred=0.05,
+            order_type='limit'
+        )
+        NotificationService.send_individual_trade_email(trade)
+        mock_send_mail.assert_not_called()
 
     @patch('core.services.notification_service.send_mail')
     def test_send_trade_failed_email(self, mock_send_mail):
@@ -1388,6 +1438,137 @@ class MakerLimitOrderAndMonitorTest(TestCase):
         response = self.client.post(reverse('trade_market_fallback', kwargs={'pk': trade.pk}))
         self.assertEqual(response.status_code, 302)
         mock_manual_fallback.assert_called_once_with(trade, self.user)
+
+
+from .services.portfolio import PortfolioService
+
+class PortfolioService24hChangeTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='holder', password='password123')
+        self.exchange = SupportedExchange.objects.create(name='Kraken', slug='kraken')
+        self.account = ExchangeAccount.objects.create(
+            user=self.user,
+            exchange=self.exchange,
+            nickname='Kraken Main',
+            api_key='k_key',
+            api_secret='k_secret',
+            is_active=True
+        )
+        self.job = AutobuyJob.objects.create(
+            user=self.user,
+            account=self.account,
+            name='Daily BTC',
+            total_amount=Decimal('100'),
+            interval='daily',
+            start_time=timezone.now()
+        )
+        self.trade = Trade.objects.create(
+            job=self.job,
+            user=self.user,
+            exchange_name='Kraken',
+            symbol='BTC/USD',
+            job_name=self.job.name,
+            order_type='limit',
+            amount_spent=Decimal('100.00'),
+            amount_received=Decimal('0.002'),
+            purchase_price=Decimal('50000.0'),
+            fee_incurred=Decimal('0.25'),
+            status='completed'
+        )
+
+    @patch('ccxt.kraken')
+    def test_portfolio_service_extracts_change_24h_percentage(self, mock_kraken_class):
+        mock_ex = MagicMock()
+        mock_ex.fetch_tickers.return_value = {
+            'BTC/USD': {
+                'last': 52000.0,
+                'percentage': 4.52
+            }
+        }
+        mock_kraken_class.return_value = mock_ex
+
+        service = PortfolioService(self.user)
+        summary = service.get_portfolio_summary()
+        self.assertEqual(len(summary['holdings']), 1)
+        holding = summary['holdings'][0]
+        self.assertEqual(holding['symbol'], 'BTC/USD')
+        self.assertEqual(holding['change_24h'], Decimal('4.52'))
+        self.assertEqual(holding['current_price'], Decimal('52000.0'))
+
+    @patch('ccxt.kraken')
+    def test_portfolio_service_calculates_change_24h_fallback(self, mock_kraken_class):
+        mock_ex = MagicMock()
+        mock_ex.fetch_tickers.return_value = {
+            'BTC/USD': {
+                'last': 55000.0,
+                'open': 50000.0
+            }
+        }
+        mock_kraken_class.return_value = mock_ex
+
+        service = PortfolioService(self.user)
+        summary = service.get_portfolio_summary()
+        self.assertEqual(len(summary['holdings']), 1)
+        holding = summary['holdings'][0]
+        self.assertEqual(holding['change_24h'], Decimal('10'))
+
+    @patch('ccxt.kraken')
+    def test_dashboard_renders_24h_percentage_column(self, mock_kraken_class):
+        mock_ex = MagicMock()
+        mock_ex.fetch_tickers.return_value = {
+            'BTC/USD': {
+                'last': 52000.0,
+                'percentage': 4.52
+            }
+        }
+        mock_kraken_class.return_value = mock_ex
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '24h %')
+        self.assertContains(response, '+4.52%')
+
+    @patch('ccxt.binance')
+    def test_portfolio_service_uses_preferred_pricing_account(self, mock_binance_class):
+        binance_ex = SupportedExchange.objects.create(name='Binance', slug='binance')
+        binance_account = ExchangeAccount.objects.create(
+            user=self.user,
+            exchange=binance_ex,
+            nickname='Binance Secondary',
+            api_key='b_key',
+            api_secret='b_secret',
+            is_active=True
+        )
+        self.user.userprofile.preferred_pricing_account = binance_account
+        self.user.userprofile.save()
+
+        mock_ex = MagicMock()
+        mock_ex.fetch_tickers.return_value = {
+            'BTC/USD': {
+                'last': 60000.0,
+                'percentage': 8.00
+            }
+        }
+        mock_binance_class.return_value = mock_ex
+
+        service = PortfolioService(self.user)
+        summary = service.get_portfolio_summary()
+        self.assertEqual(len(summary['holdings']), 1)
+        holding = summary['holdings'][0]
+        self.assertEqual(holding['current_price'], Decimal('60000.0'))
+        self.assertEqual(holding['change_24h'], Decimal('8.00'))
+
+    def test_profile_view_renders_pricing_selector_and_alert_options(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('profile'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Market & Pricing Data')
+        self.assertContains(response, 'Pricing Data Exchange')
+        self.assertContains(response, 'Job Completion Summary Email')
+        self.assertContains(response, 'Individual Trade Fill Alerts')
+        self.assertContains(response, 'Default (First Active Exchange)')
+
 
 
 

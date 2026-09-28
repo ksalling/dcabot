@@ -149,9 +149,9 @@ class TradeExecutor:
 
         job.save()
         
-        # Send Success Email Notification
+        # Send Job Summary Email Notification
         if created_trades:
-            NotificationService.send_trade_success_email(job, created_trades)
+            NotificationService.send_job_summary_email(job, created_trades)
             
         exchange_service.log(f"Job finished. Next run at {job.next_run}", job=job)
 
